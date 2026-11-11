@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: Nightly
+# Manual only. The daily schedule is removed.
+# Starting this workflow still builds a signed release and publishes a GitHub Release.
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 16 * * *' # UTC 16:00 / GMT+8 0:00, daily
 
 env:
   CI_NAME: Nightly CI

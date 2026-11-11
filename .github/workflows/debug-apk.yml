@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: 2015 - 2026 Rime community
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Manual debug APK. No schedule, no push, no release, no signing secrets.
+# Does not call the other workflows. The Android debug keystore is enough.
+# applicationId ends with ".debug".
+name: Debug APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: Native ABIs. arm64-v8a, or the project's four default ABIs.
+        required: true
+        type: choice
+        default: arm64-v8a
+        options:
+          - arm64-v8a
+          - armeabi-v7a,arm64-v8a,x86,x86_64
+
+# contents: read is enough to check out and upload artifacts.
+# actions: write is required by actions/cache and setup-java to save caches.
+# No contents: write and no release permission.
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  debug-apk:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    env:
+      CI_NAME: Debug APK
+      # Read by Project.buildAbiOverride and included in the native cache hash.
+      BUILD_ABI: ${{ inputs.abi }}
+    steps:
+      - name: Fetch source code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record source revision
+        run: |
+          mkdir -p build-logs
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "ref=${GITHUB_REF}"
+            echo "ref_name=${GITHUB_REF_NAME}"
+            echo "sha=${GITHUB_SHA}"
+            echo "describe=$(git describe --tags --long --always --exclude=nightly)"
+            echo "abi=${BUILD_ABI}"
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+          } | tee build-logs/source-revision.txt
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          # Exact-key Gradle dependency cache. See actions/setup-java cache.ts:
+          # key material is **/*.gradle*, gradle.properties, gradle-wrapper.properties,
+          # gradle/*.versions.toml, versions.properties, and buildSrc version files.
+          # No restore-keys, so a dependency change does not reuse the old entry.
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          # CMake pin matches build-logic Versions.DEFAULT_CMAKE (4.1.2).
+          # AGP installs NDK Versions.DEFAULT_NDK during configuration.
+          packages: "platform-tools cmake;4.1.2"
+
+      - name: Calculate JNI cache hash
+        id: cache-hash
+        run: |
+          ./gradlew :app:calculateNativeCacheHash
+          # NativeCacheHashCalcTask writes native-cache-hash without a newline.
+          printf '\n' >> "$GITHUB_OUTPUT"
+          echo "patch-hash=$(sha256sum patches/lua.patch | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore native library cache
+        uses: actions/cache@v6
+        id: jni-cache
+        with:
+          path: app/prebuilt
+          # Exact key only. NativeCacheHashCalcTask already folds in CMake version,
+          # NDK version, BUILD_ABI, minSdk, submodule status, jni/cmake, librime_jni,
+          # and CMakeLists.txt. The patch digest covers patches/lua.patch, which
+          # `make debug` applies and the Gradle task does not hash.
+          key: ubuntu-26.04-trime-debug-apk-jni-${{ steps.cache-hash.outputs.native-cache-hash }}-${{ steps.cache-hash.outputs.patch-hash }}
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          make debug 2>&1 | tee build-logs/debug-build.log
+
+      - name: Record packaged APKs
+        run: |
+          {
+            echo
+            echo "apk_sha256:"
+            sha256sum app/build/outputs/apk/debug/*.apk
+          } | tee -a build-logs/source-revision.txt
+
+      - name: Save native library cache
+        if: ${{ steps.jni-cache.outputs.cache-hit != 'true' }}
+        run: cp -R app/build/intermediates/merged_native_libs/debug/mergeDebugNativeLibs/out/lib app/prebuilt
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: trime-debug-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload source revision and build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: trime-debug-build-info-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build-logs/source-revision.txt
+            build-logs/debug-build.log
+          retention-days: 30
+          if-no-files-found: warn

@@ -98,6 +98,10 @@ make debug
 
 The first native build downloads Boost automatically, so an internet connection is required.
 
+To build the same debug APK on GitHub Actions, use the manual **Debug APK** workflow (`.github/workflows/debug-apk.yml`). It does not run on push or on a schedule, and it does not read release signing secrets. After that file is on the default branch, open Actions, choose Debug APK, and run it. Pick the branch to build. The ABI defaults to `arm64-v8a`; the other choice is the project's four ABIs (`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`). Download the APK, `source-revision.txt`, and `debug-build.log` from the run artifacts. They are kept for 30 days. The APK is signed with the Android debug certificate, and its application id ends with `.debug`.
+
+Once this change is merged into a branch, push, pull request, tag, and schedule events no longer start builds or checks from that branch's workflow files. Until then, other branches, including the default branch, keep their previous workflow files and can still run automatically. Commit and Pull Request remain available as separate manual runs. Nightly and Release also stay manual; running either one still signs a release APK and publishes a GitHub Release.
+
 #### 3. Release version with signature:
 
 Create a `keystore.properties` file in the repository root with your [signing information](https://developer.android.com/studio/publish/app-signing):
