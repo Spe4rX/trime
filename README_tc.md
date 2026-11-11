@@ -93,6 +93,8 @@ make debug
 
 首次原生建置會自動下載 Boost，需要網路連線。
 
+也可以用 GitHub Actions 的手動工作流程 **Debug APK**（`.github/workflows/debug-apk.yml`）建置同一類偵錯 APK。它不會在推送或排程時執行，也不讀取正式簽名 secrets。該檔案進入預設分支後，開啟 Actions，選擇 Debug APK 並執行。選擇要建置的分支。ABI 預設是 `arm64-v8a`，另一項是專案預設的四個 ABI（`armeabi-v7a`、`arm64-v8a`、`x86`、`x86_64`）。從該次執行的 Artifacts 下載 APK、`source-revision.txt` 和 `debug-build.log`，保留 30 天。APK 使用 Android 偵錯憑證簽名，應用程式 ID 以 `.debug` 結尾。
+
 #### 3. 編譯正式版本：
 
 請在倉庫根目錄建立 `keystore.properties` 檔案，包含以下[簽名資訊](https://developer.android.com/studio/publish/app-signing)：
