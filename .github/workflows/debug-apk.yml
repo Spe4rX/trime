@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Manual debug APK. No schedule, no push, no release, no signing secrets.
-# The Android debug keystore is enough. applicationId ends with ".debug".
+# Does not call the other workflows. The Android debug keystore is enough.
+# applicationId ends with ".debug".
 name: Debug APK
 
 on:

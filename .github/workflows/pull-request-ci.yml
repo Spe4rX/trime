@@ -4,13 +4,9 @@
 
 name: Pull Request
 
+# Manual only. pull_request no longer starts this workflow.
 on:
-  pull_request:
-    types:
-      - opened
-      - reopened
-      # pull request's head branch was updated
-      - synchronize
+  workflow_dispatch:
 
 env:
   CI_NAME: Pull Request CI

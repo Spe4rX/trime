@@ -3,10 +3,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: Commit
+# Manual only. Push no longer starts this workflow.
 on:
-  push:
-    branches:
-      - '**'
+  workflow_dispatch:
 
 env:
   CI_NAME: Commit CI

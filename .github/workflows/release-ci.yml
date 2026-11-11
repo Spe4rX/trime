@@ -3,11 +3,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: Release
+# Manual only. Tag pushes no longer start this workflow.
+# Starting this workflow still builds a signed release and publishes a GitHub Release.
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 env:
   CI_NAME: Release CI
 jobs:
