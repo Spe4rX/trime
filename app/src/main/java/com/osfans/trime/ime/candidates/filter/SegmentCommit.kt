@@ -14,8 +14,9 @@ import kotlinx.coroutines.withContext
 /**
  * After [RimeApi.selectCandidate], Rime often keeps the chosen text in the
  * composition (preedit) instead of emitting a commit, especially when raw
- * input remains. In 单字 mode the chosen character should go to the editor
- * immediately, and only the leftover input should stay in composition.
+ * input remains. The confirmed prefix should go to the editor immediately,
+ * and only the leftover input should stay in composition. This applies in
+ * both 全部 and 单字 views, e.g. selecting 你 from nihao.
  */
 object SegmentCommit {
     data class Split(val confirmed: String, val remaining: String)
@@ -53,9 +54,10 @@ object SegmentCommit {
         service: TrimeInputMethodService,
         filterController: CandidateFilterController,
     ) {
-        if (!filterController.current.singleChar) return
         val split = split(api.compositionCached) ?: return
         val remaining = resolveRemaining(api.getRawInput(), split.remaining)
+        // A complete selection with no leftover is handled by Rime's own commit.
+        if (remaining.isEmpty()) return
         filterController.beginSegmentCommit()
         try {
             withContext(Dispatchers.Main.immediate) {
