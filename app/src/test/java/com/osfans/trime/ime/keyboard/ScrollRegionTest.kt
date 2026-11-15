@@ -149,7 +149,7 @@ class ScrollRegionTest :
                 content shouldBe (14 to 160)
             }
 
-            Then("horizontal children sit on one row and can overflow the viewport") {
+            Then("horizontal children sit on one row and the content is at least as wide as the viewport") {
                 val (rects, content) = ScrollRegionLayout.layoutChildren(
                     TextKey.Scroll.HORIZONTAL,
                     viewportWidth = 86,
@@ -163,7 +163,23 @@ class ScrollRegionTest :
                     ChildRect(20, 0, 10, 40),
                     ChildRect(30, 0, 20, 40),
                 )
-                content shouldBe (50 to 40)
+                content shouldBe (86 to 40)
+            }
+
+            Then("horizontal children that overflow the viewport extend the content width") {
+                val (rects, content) = ScrollRegionLayout.layoutChildren(
+                    TextKey.Scroll.HORIZONTAL,
+                    viewportWidth = 86,
+                    viewportHeight = 40,
+                    visibleCount = 1,
+                    childWidths = listOf(40, 40, 40),
+                )
+                rects shouldBe listOf(
+                    ChildRect(0, 0, 40, 40),
+                    ChildRect(40, 0, 40, 40),
+                    ChildRect(80, 0, 40, 40),
+                )
+                content shouldBe (120 to 40)
             }
         }
 
