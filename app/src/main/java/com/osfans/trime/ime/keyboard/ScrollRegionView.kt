@@ -9,7 +9,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
@@ -35,6 +34,9 @@ import splitties.dimensions.dp
  * The slot is drawn as one rounded bar (the same fill as a key) with hairline
  * separators between items, matching the layout sketches: a grouped strip,
  * not a recessed track or overlay arrows.
+ *
+ * Separators are drawn on the content strip so they move and stretch with the
+ * child keys when the scroll view overscrolls.
  */
 @SuppressLint("ViewConstructor")
 class ScrollRegionView(
@@ -49,14 +51,12 @@ class ScrollRegionView(
     private val region = requireNotNull(key.scrollRegion)
     private val horizontal = region.direction == TextKey.Scroll.HORIZONTAL
     private val scroller: ViewGroup
-    private val content: LinearLayout
+    private val content: ContentStrip
     private val insetH = keyboard.horizontalGap / 2
     private val insetV = keyboard.verticalGap / 2
-    private val cornerRadius = dp(key.roundCorner).toFloat()
-    private val separatorInset = context.dp(8).toFloat()
+    private val cornerRadius = dp(key.roundCorner)
 
     private val clipRect = RectF()
-    private val childRect = Rect()
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val separatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -69,14 +69,28 @@ class ScrollRegionView(
         setWillNotDraw(false)
         applyCapsuleColors()
 
-        content = LinearLayout(context).apply {
+        content = ContentStrip(context).apply {
             orientation = if (horizontal) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         }
+        // Child sizes are computed from the full slot; the scroller sits inside
+        // the capsule insets, so shrink the cross/main sizes to that viewport
+        // or the last visible item is clipped.
+        val innerW = (key.width - 2 * insetH).coerceAtLeast(1)
+        val innerH = (key.height - 2 * insetV).coerceAtLeast(1)
+        val visible = if (horizontal) {
+            val sample = region.keys.firstOrNull()?.width ?: innerW
+            if (sample > 0) (key.width / sample).coerceAtLeast(1) else 1
+        } else {
+            val sample = region.keys.firstOrNull()?.height ?: innerH
+            if (sample > 0) (key.height / sample).coerceAtLeast(1) else 1
+        }
         region.keys.forEachIndexed { index, child ->
+            val cellW = if (horizontal) child.width else innerW
+            val cellH = if (horizontal) innerH else innerH / visible
             val keyView = KeyView(context, theme, child, keyboard, keyboardView, keyboardActionListener).apply {
                 id = child.index.takeIf { it >= 0 } ?: index
-                layoutParams = LinearLayout.LayoutParams(child.width, child.height)
+                layoutParams = LinearLayout.LayoutParams(cellW, cellH)
                 drawKeyBackground = false
             }
             content.addView(keyView)
@@ -153,40 +167,6 @@ class ScrollRegionView(
         }
     }
 
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        drawSeparators(canvas)
-    }
-
-    private fun drawSeparators(canvas: Canvas) {
-        val last = content.childCount - 1
-        if (last <= 0) return
-        for (i in 0 until last) {
-            val child = content.getChildAt(i)
-            childRect.set(0, 0, child.width, child.height)
-            offsetDescendantRectToMyCoords(child, childRect)
-            if (horizontal) {
-                val x = childRect.right.toFloat()
-                canvas.drawLine(
-                    x,
-                    childRect.top + separatorInset,
-                    x,
-                    childRect.bottom - separatorInset,
-                    separatorPaint,
-                )
-            } else {
-                val y = childRect.bottom.toFloat()
-                canvas.drawLine(
-                    childRect.left + separatorInset,
-                    y,
-                    childRect.right - separatorInset,
-                    y,
-                    separatorPaint,
-                )
-            }
-        }
-    }
-
     /**
      * Ask ancestors not to steal the gesture, so a ScrollView inside an IME
      * keyboard can take over after touch slop and cancel the child key press.
@@ -195,8 +175,31 @@ class ScrollRegionView(
         parent?.requestDisallowInterceptTouchEvent(true)
     }
 
-    private fun onRegionScrolled() {
-        invalidate()
+    private inner class ContentStrip(context: Context) : LinearLayout(context) {
+        init {
+            setWillNotDraw(false)
+        }
+
+        override fun dispatchDraw(canvas: Canvas) {
+            super.dispatchDraw(canvas)
+            drawSeparators(canvas)
+        }
+
+        private fun drawSeparators(canvas: Canvas) {
+            val last = childCount - 1
+            if (last <= 0) return
+            for (i in 0 until last) {
+                val child = getChildAt(i)
+                val next = getChildAt(i + 1)
+                if (horizontal) {
+                    val x = (child.right + next.left) / 2f
+                    canvas.drawLine(x, 0f, x, height.toFloat(), separatorPaint)
+                } else {
+                    val y = (child.bottom + next.top) / 2f
+                    canvas.drawLine(0f, y, width.toFloat(), y, separatorPaint)
+                }
+            }
+        }
     }
 
     private inner class DisallowingScrollView(context: Context) : ScrollView(context) {
@@ -206,11 +209,6 @@ class ScrollRegionView(
             }
             return super.onInterceptTouchEvent(ev)
         }
-
-        override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
-            super.onScrollChanged(l, t, oldl, oldt)
-            onRegionScrolled()
-        }
     }
 
     private inner class DisallowingHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
@@ -219,11 +217,6 @@ class ScrollRegionView(
                 disallowParentIntercept()
             }
             return super.onInterceptTouchEvent(ev)
-        }
-
-        override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
-            super.onScrollChanged(l, t, oldl, oldt)
-            onRegionScrolled()
         }
     }
 }
