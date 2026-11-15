@@ -135,6 +135,26 @@ class KeyboardView(
         return null
     }
 
+    fun firstVerticalScrollRegion(): ScrollRegionView? {
+        children.filterIsInstance<ScrollRegionView>().forEach { child ->
+            if (child.isVertical) return child
+        }
+        return null
+    }
+
+    fun applyCombinationFilters(
+        items: List<String>,
+        selectedIndex: Int,
+        onItemClick: (index: Int, syllable: String) -> Unit,
+    ) {
+        val slot = firstVerticalScrollRegion() ?: return
+        slot.setCombinationFilters(items, selectedIndex, onItemClick)
+    }
+
+    fun restoreCombinationFilters() {
+        firstVerticalScrollRegion()?.restoreOriginalKeys()
+    }
+
     val isCapsOn: Boolean
         get() = keyboard.mShiftKey?.isOn == true
 

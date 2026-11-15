@@ -10,6 +10,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +19,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
@@ -63,6 +66,15 @@ class ScrollRegionView(
         strokeWidth = context.dp(1).toFloat().coerceAtLeast(1f)
     }
 
+    val isVertical: Boolean get() = !horizontal
+
+    private val originalKeyViews = mutableListOf<View>()
+    private var filterMode = false
+    private var filterCellWidth = 0
+    private var filterCellHeight = 0
+    private var selectedFilterColor = 0xFFFFFFFF.toInt()
+    private var dimFilterColor = 0x80FFFFFF.toInt()
+
     init {
         clipToPadding = true
         clipChildren = false
@@ -94,7 +106,12 @@ class ScrollRegionView(
                 drawKeyBackground = false
             }
             content.addView(keyView)
+            if (!horizontal && filterCellWidth == 0) {
+                filterCellWidth = cellW
+                filterCellHeight = cellH
+            }
         }
+        originalKeyViews.addAll((0 until content.childCount).map { content.getChildAt(it) })
 
         scroller = if (horizontal) {
             DisallowingHorizontalScrollView(context).apply {
@@ -149,6 +166,15 @@ class ScrollRegionView(
         trackPaint.color = bar
         val hairline = if (ColorUtils.calculateLuminance(bar) < 0.6) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
         separatorPaint.color = ColorUtils.setAlphaComponent(hairline, 0x4D)
+        selectedFilterColor = ink
+        dimFilterColor = ColorUtils.setAlphaComponent(ink, 0x99)
+        if (filterMode) {
+            for (i in 0 until content.childCount) {
+                (content.getChildAt(i) as? TextView)?.let { label ->
+                    label.setTextColor(if (label.isSelected) selectedFilterColor else dimFilterColor)
+                }
+            }
+        }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -165,6 +191,57 @@ class ScrollRegionView(
         if (!clipRect.isEmpty) {
             canvas.drawRoundRect(clipRect, cornerRadius, cornerRadius, trackPaint)
         }
+    }
+
+    /**
+     * Swap the slot's child keys for possible input combinations. Clicking an
+     * item does not go through normal Rime text key actions. An empty [items]
+     * list restores the original keys.
+     */
+    fun setCombinationFilters(
+        items: List<String>,
+        selectedIndex: Int,
+        onItemClick: (index: Int, syllable: String) -> Unit,
+    ) {
+        if (horizontal) return
+        if (items.isEmpty()) {
+            restoreOriginalKeys()
+            return
+        }
+        filterMode = true
+        content.removeAllViews()
+        val cellW = filterCellWidth.coerceAtLeast(1)
+        val cellH = filterCellHeight.coerceAtLeast(1)
+        items.forEachIndexed { index, syllable ->
+            val selected = index == selectedIndex
+            val label = TextView(context).apply {
+                text = syllable
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(if (selected) selectedFilterColor else dimFilterColor)
+                isClickable = true
+                isFocusable = true
+                isSelected = selected
+                setOnClickListener { onItemClick(index, syllable) }
+                layoutParams = LinearLayout.LayoutParams(cellW, cellH)
+            }
+            content.addView(label)
+        }
+        content.requestLayout()
+        invalidate()
+    }
+
+    fun restoreOriginalKeys() {
+        if (!filterMode) return
+        filterMode = false
+        content.removeAllViews()
+        originalKeyViews.forEach { child ->
+            (child.parent as? ViewGroup)?.removeView(child)
+            content.addView(child)
+        }
+        content.requestLayout()
+        invalidate()
     }
 
     /**

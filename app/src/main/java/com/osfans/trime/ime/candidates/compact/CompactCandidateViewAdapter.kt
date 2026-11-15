@@ -10,22 +10,22 @@ import android.view.ViewGroup
 import androidx.core.view.updateLayoutParams
 import com.chad.library.adapter4.BaseQuickAdapter
 import com.google.android.flexbox.FlexboxLayoutManager
-import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.candidates.CandidateItemUi
 import com.osfans.trime.ime.candidates.CandidateViewHolder
+import com.osfans.trime.ime.candidates.filter.IndexedCandidate
 import splitties.dimensions.dp
 import splitties.views.dsl.core.matchParent
 import splitties.views.dsl.core.wrapContent
 
 open class CompactCandidateViewAdapter(
     val scope: ThemeScope,
-) : BaseQuickAdapter<CandidateProto, CandidateViewHolder>() {
+) : BaseQuickAdapter<IndexedCandidate, CandidateViewHolder>() {
     init {
         setHasStableIds(true)
     }
 
-    override fun getItemId(position: Int): Long = items.getOrNull(position).hashCode().toLong()
+    override fun getItemId(position: Int): Long = items.getOrNull(position)?.index?.toLong() ?: position.toLong()
 
     var total: Int = -1
         private set
@@ -45,11 +45,11 @@ open class CompactCandidateViewAdapter(
     }
 
     fun updateCandidates(
-        data: Array<CandidateProto>,
+        data: List<IndexedCandidate>,
         total: Int,
         highlightedIndex: Int,
     ) {
-        super.submitList(data.toList(), null)
+        super.submitList(data, null)
         this.total = total
         this.highlightedIdx = highlightedIndex
     }
@@ -70,14 +70,14 @@ open class CompactCandidateViewAdapter(
     override fun onBindViewHolder(
         holder: CandidateViewHolder,
         position: Int,
-        item: CandidateProto?,
+        item: IndexedCandidate?,
     ) {
         item ?: return
-        val isHighlighted = position == highlightedIdx
-        holder.ui.update(item, isHighlighted)
-        holder.text = item.text
-        holder.comment = item.comment
-        holder.idx = position // unused
+        val isHighlighted = item.index == highlightedIdx
+        holder.ui.update(item.candidate, isHighlighted)
+        holder.text = item.candidate.text
+        holder.comment = item.candidate.comment
+        holder.idx = item.index
         holder.ui.root.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {
             minWidth = this@CompactCandidateViewAdapter.layoutMinWidth
             flexGrow = this@CompactCandidateViewAdapter.layoutFlexGrow
