@@ -7,7 +7,8 @@ package com.osfans.trime.ime.keyboard
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.view.View
+import android.view.MotionEvent
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ScrollView
@@ -19,6 +20,10 @@ import com.osfans.trime.data.theme.model.TextKeyboard.TextKey
  * vertical [ScrollView] or a [HorizontalScrollView]. The parent keyboard does
  * not intercept these gestures, and a scroll cancels the child key press
  * (standard Android [ACTION_CANCEL] after the scroll view takes over).
+ *
+ * Child keys are placed with layout margins, not translation. ScrollView
+ * measures its content from layout bounds; translation would leave the
+ * content the size of one key, clip the rest, and make the slot unscrollable.
  */
 @SuppressLint("ViewConstructor")
 class ScrollRegionView(
@@ -35,17 +40,16 @@ class ScrollRegionView(
     init {
         clipToPadding = true
         clipChildren = true
-        val contentWidth = region.keys.maxOfOrNull { it.x + it.width } ?: key.width
-        val contentHeight = region.keys.maxOfOrNull { it.y + it.height } ?: key.height
-        val content = FrameLayout(context).apply {
-            layoutParams = LayoutParams(contentWidth, contentHeight)
-        }
+        val contentWidth = (region.keys.maxOfOrNull { it.x + it.width } ?: key.width).coerceAtLeast(key.width)
+        val contentHeight = (region.keys.maxOfOrNull { it.y + it.height } ?: key.height).coerceAtLeast(key.height)
+        val content = FrameLayout(context)
         region.keys.forEachIndexed { index, child ->
             val keyView = KeyView(context, theme, child, keyboard, keyboardView, keyboardActionListener).apply {
                 id = child.index.takeIf { it >= 0 } ?: index
-                layoutParams = LayoutParams(child.width, child.height)
-                translationX = child.x.toFloat()
-                translationY = child.y.toFloat()
+                layoutParams = LayoutParams(child.width, child.height).apply {
+                    leftMargin = child.x
+                    topMargin = child.y
+                }
                 setPadding(
                     keyboard.horizontalGap / 2,
                     keyboard.verticalGap / 2,
@@ -55,23 +59,52 @@ class ScrollRegionView(
             }
             content.addView(keyView)
         }
-        val scroller: View = if (region.direction == TextKey.Scroll.HORIZONTAL) {
-            HorizontalScrollView(context).apply {
-                isFillViewport = true
+        val contentParams = ViewGroup.MarginLayoutParams(contentWidth, contentHeight)
+        val scroller = if (region.direction == TextKey.Scroll.HORIZONTAL) {
+            DisallowingHorizontalScrollView(context).apply {
+                isFillViewport = false
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
                 isHorizontalFadingEdgeEnabled = true
-                addView(content)
+                isNestedScrollingEnabled = true
+                addView(content, contentParams)
             }
         } else {
-            ScrollView(context).apply {
-                isFillViewport = true
+            DisallowingScrollView(context).apply {
+                isFillViewport = false
                 isVerticalScrollBarEnabled = false
                 overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
                 isVerticalFadingEdgeEnabled = true
-                addView(content)
+                isNestedScrollingEnabled = true
+                addView(content, contentParams)
             }
         }
         addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    /**
+     * Ask ancestors not to steal the gesture, so a ScrollView inside an IME
+     * keyboard can take over after touch slop and cancel the child key press.
+     */
+    private fun ViewGroup.disallowParentIntercept() {
+        parent?.requestDisallowInterceptTouchEvent(true)
+    }
+
+    private inner class DisallowingScrollView(context: Context) : ScrollView(context) {
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                disallowParentIntercept()
+            }
+            return super.onInterceptTouchEvent(ev)
+        }
+    }
+
+    private inner class DisallowingHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
+        override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                disallowParentIntercept()
+            }
+            return super.onInterceptTouchEvent(ev)
+        }
     }
 }

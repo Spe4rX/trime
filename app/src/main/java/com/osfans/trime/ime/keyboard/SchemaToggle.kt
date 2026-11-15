@@ -23,4 +23,14 @@ object SchemaToggle {
         if (index < 0) return schemas.first()
         return schemas[(index + 1) % schemas.size]
     }
+
+    /**
+     * Prefer a keyboard whose id equals the schema id, the same rule
+     * [com.osfans.trime.ime.keyboard.KeyboardWindow] uses in smart matching.
+     * Fall back to `.default` so the window can still pick by alphabet.
+     */
+    fun keyboardForSchema(schemaId: String, presetKeyboardIds: Collection<String>): String {
+        if (schemaId.isNotEmpty() && presetKeyboardIds.contains(schemaId)) return schemaId
+        return ".default"
+    }
 }

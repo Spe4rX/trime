@@ -185,10 +185,16 @@ class KeyboardWindow(di: DI) :
             val currentMode = rime.run { statusCached }.isAsciiMode
             val targetMode = if (it.resetAsciiMode) it.asciiMode else it.lastAsciiMode
 
-            if (currentMode != targetMode) {
+            // After a schema switch, statusCached.isAsciiMode can lag the
+            // live Rime option. If we skip this job, keys may be committed
+            // as raw characters (digits on a T9 board) until something else
+            // resets ascii_mode.
+            if (it.resetAsciiMode || currentMode != targetMode) {
                 service.postRimeJob {
-                    commitComposition()
-                    setRuntimeOption("ascii_mode", targetMode)
+                    if (getRuntimeOption("ascii_mode") != targetMode) {
+                        commitComposition()
+                        setRuntimeOption("ascii_mode", targetMode)
+                    }
                 }
             }
 
@@ -379,7 +385,7 @@ class KeyboardWindow(di: DI) :
     }
 
     override fun onRimeSchemaUpdated(schema: SchemaItem) {
-        switchKeyboard(".default")
+        switchKeyboard(SchemaToggle.keyboardForSchema(schema.id, presetKeyboardIds))
     }
 
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
