@@ -7,6 +7,7 @@ package com.osfans.trime.ime.candidates.unrolled.window
 
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
+import android.view.KeyEvent
 import android.view.View
 import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -23,11 +24,14 @@ import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.CandidateViewHolder
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
-import com.osfans.trime.ime.candidates.unrolled.CandidatesPagingSource
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.FilteringCandidatesPagingSource
+import com.osfans.trime.ime.candidates.filter.InputMode
 import com.osfans.trime.ime.candidates.unrolled.PagingCandidateViewAdapter
 import com.osfans.trime.ime.candidates.unrolled.UnrolledCandidateLayout
 import com.osfans.trime.ime.core.InputView
 import com.osfans.trime.ime.core.TrimeInputMethodService
+import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyboardWindow
 import com.osfans.trime.ime.window.BoardWindow
 import com.osfans.trime.ime.window.BoardWindowManager
@@ -49,6 +53,8 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
     private val bar: InputBarDelegate by instance()
     private val windowManager: BoardWindowManager by instance()
     private val compactCandidate: CompactCandidateDelegate by instance()
+    private val filterController: CandidateFilterController by instance()
+    private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
 
     protected val theme: Theme
         get() = scope.theme
@@ -100,29 +106,61 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
                 enablePlaceholders = false,
             ),
             pagingSourceFactory = {
-                CandidatesPagingSource(
+                val rimeTotal = compactCandidate.adapter.total
+                // compact.total is already the filtered count when a filter is
+                // active, so walk the raw Rime menu instead.
+                val rawTotal = lastRimeTotal
+                FilteringCandidatesPagingSource(
                     rime,
-                    total = compactCandidate.adapter.total,
-                    offset = adapter.offset,
+                    rimeTotal = rawTotal,
+                    predicate = { candidate, _ ->
+                        val state = filterController.current
+                        if (!state.singleChar &&
+                            state.snapshot.mode == InputMode.NONE
+                        ) {
+                            true
+                        } else {
+                            filterController.matches(candidate.text)
+                        }
+                    },
                 )
             },
         )
     }
+
+    private var lastRimeTotal: Int = -1
+    private var filterCollectJob: Job? = null
 
     private var candidatesSubmitJob: Job? = null
 
     override fun onAttached() {
         lifecycleCoroutineScope = candidateLayout.findViewTreeLifecycleOwner()!!.lifecycleScope
         bar.unrollButtonStateMachine.push(UnrollButtonStateMachine.TransitionEvent.UnrolledCandidatesAttached)
+        lastRimeTotal = if (filterController.current.singleChar ||
+            filterController.current.snapshot.mode != InputMode.NONE
+        ) {
+            -1
+        } else {
+            compactCandidate.adapter.total
+        }
+        candidateLayout.backspaceButton.setOnClickListener {
+            val listener = commonKeyboardActionListener.listener
+            listener.onPress(KeyEvent.KEYCODE_DEL)
+            listener.onKey(KeyEvent.KEYCODE_DEL, 0)
+        }
+        candidateLayout.filterColumn.onItemClick = { index, syllable ->
+            filterController.onFilterClick(index, syllable)
+        }
+        applyFilterColumn(filterController.current)
         offsetJob =
             lifecycleCoroutineScope.launch {
                 compactCandidate.unrolledCandidateOffset.collect {
-                    if (it <= 0) {
+                    if (compactCandidate.adapter.total <= 0) {
                         windowManager.attachWindow(KeyboardWindow)
                     } else {
                         candidateLayout.resetPosition()
                         adapter.refreshWith(
-                            offset = it,
+                            offset = 0,
                             highlightedIndex = compactCandidate.adapter.highlightedIdx,
                         )
                     }
@@ -134,6 +172,32 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
                     adapter.submitData(it)
                 }
             }
+        filterCollectJob =
+            lifecycleCoroutineScope.launch {
+                filterController.state.collect { state ->
+                    applyFilterColumn(state)
+                    lastRimeTotal = if (state.singleChar ||
+                        state.snapshot.mode != InputMode.NONE
+                    ) {
+                        -1
+                    } else {
+                        compactCandidate.adapter.total
+                    }
+                    adapter.refreshWith(0, compactCandidate.adapter.highlightedIdx)
+                }
+            }
+    }
+
+    private fun applyFilterColumn(state: CandidateFilterController.State) {
+        if (!::candidateLayout.isInitialized) return
+        if (state.showExpandedFilter) {
+            candidateLayout.filterColumn.setItems(
+                state.snapshot.filterItems,
+                state.snapshot.selectedIndex,
+            )
+        } else {
+            candidateLayout.filterColumn.setItems(emptyList(), -1)
+        }
     }
 
     fun bindCandidateUiViewHolder(holder: CandidateViewHolder) {
@@ -156,5 +220,6 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
         )
         offsetJob?.cancel()
         candidatesSubmitJob?.cancel()
+        filterCollectJob?.cancel()
     }
 }

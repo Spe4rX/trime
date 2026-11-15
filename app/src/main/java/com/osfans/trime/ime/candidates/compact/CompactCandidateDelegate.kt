@@ -12,6 +12,7 @@ import android.view.ContextThemeWrapper
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.flexbox.FlexboxLayoutManager
+import androidx.core.content.ContextCompat
 import com.osfans.trime.R
 import com.osfans.trime.core.Candidates
 import com.osfans.trime.daemon.RimeSession
@@ -22,11 +23,18 @@ import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
+import com.osfans.trime.core.CandidateProto
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.IndexedCandidate
+import com.osfans.trime.ime.candidates.filter.InputMode
 import com.osfans.trime.ime.candidates.unrolled.decoration.FlexboxVerticalDecoration
 import com.osfans.trime.ime.core.InputView
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.kodein.di.DI
 import org.kodein.di.DIAware
 import org.kodein.di.instance
@@ -42,11 +50,17 @@ class CompactCandidateDelegate(override val di: DI) :
     private val scope: ThemeScope by instance()
     private val inputView: InputView by instance()
     private val bar: InputBarDelegate by instance()
+    private val filterController: CandidateFilterController by instance()
 
     private val theme: Theme
         get() = scope.theme
 
     private val fillStyle by AppPrefs.defaultInstance().keyboard.horizontalCandidateMode
+
+    private var lastBulk: Candidates.Bulk? = null
+    private var publishSeq = 0
+    private var collectJob: Job? = null
+    private var lastFilterKey: Pair<Any, Boolean>? = null
 
     private val maxSpanCountPref by lazy {
         AppPrefs.defaultInstance().keyboard.run {
@@ -96,10 +110,12 @@ class CompactCandidateDelegate(override val di: DI) :
     val adapter by lazy {
         CompactCandidateViewAdapter(scope).apply {
             setOnItemClickListener { _, _, position ->
-                rime.launchOnReady { it.selectCandidate(position, global = true) }
+                val index = items.getOrNull(position)?.index ?: return@setOnItemClickListener
+                rime.launchOnReady { it.selectCandidate(index, global = true) }
             }
             setOnItemLongClickListener { _, view, position ->
-                inputView.showCandidateActionMenu(position, items[position].text, view, global = true)
+                val item = items.getOrNull(position) ?: return@setOnItemLongClickListener false
+                inputView.showCandidateActionMenu(item.index, item.candidate.text, view, global = true)
                 true
             }
         }
@@ -173,11 +189,88 @@ class CompactCandidateDelegate(override val di: DI) :
         }
     }
 
+    init {
+        collectJob = rime.lifecycleScope.launch(Dispatchers.Main) {
+            filterController.state.collect { state ->
+                val key = state.snapshot to state.singleChar
+                if (key != lastFilterKey) {
+                    lastFilterKey = key
+                    lastBulk?.let { publish(it) }
+                }
+            }
+        }
+    }
+
     override fun onCandidateListUpdate(data: Candidates.Bulk) {
+        lastBulk = data
+        publish(data)
+    }
+
+    private fun publish(data: Candidates.Bulk) {
         val (total, highlighted, candidates) = data
-
         val maxSpanCount = maxSpanCountPref.getValue()
+        val needsFilter = filterController.current.singleChar ||
+            filterController.current.snapshot.mode != InputMode.NONE
 
+        applyFillStyle(if (needsFilter) maxSpanCount else candidates.size, maxSpanCount)
+
+        if (!needsFilter) {
+            val indexed = candidates.mapIndexed { i, c -> IndexedCandidate(i, c) }
+            adapter.updateLayoutParams(layoutMinWidth, layoutFlexGrow)
+            adapter.updateCandidates(indexed, total, highlighted)
+            if (indexed.isEmpty()) refreshUnrolled(0)
+            val first = indexed.firstOrNull { it.index == highlighted } ?: indexed.firstOrNull()
+            filterController.setDisplayCandidate(first?.candidate?.text)
+            return
+        }
+
+        val seq = ++publishSeq
+        rime.launchOnReady { api ->
+            if (seq != publishSeq) return@launchOnReady
+            val want = max(maxSpanCount * 2, 24)
+            val acc = ArrayList<IndexedCandidate>(want)
+            var start = 0
+            val rimeTotal = if (total >= 0) total else Int.MAX_VALUE
+            // Start from the already-delivered page, then walk further if needed.
+            fun accept(index: Int, text: CandidateProto) {
+                if (filterController.matches(text.text)) {
+                    acc += IndexedCandidate(index, text)
+                }
+            }
+            candidates.forEachIndexed { i, c -> accept(i, c) }
+            start = candidates.size
+            var exhausted = start >= rimeTotal || candidates.size < 1 && total == 0
+            val pageSize = 80
+            while (acc.size < want && start < rimeTotal) {
+                val chunk = api.getCandidates(start, pageSize)
+                if (chunk.isEmpty()) {
+                    exhausted = true
+                    break
+                }
+                chunk.forEachIndexed { i, c -> accept(start + i, c) }
+                start += chunk.size
+                if (chunk.size < pageSize) {
+                    exhausted = true
+                    break
+                }
+            }
+            if (start >= rimeTotal) exhausted = true
+            val filteredTotal = if (exhausted) acc.size else acc.size + 1
+            val highlightedIndex = acc.firstOrNull { it.index == highlighted }?.index
+                ?: acc.firstOrNull()?.index
+                ?: -1
+            ContextCompat.getMainExecutor(context).execute {
+                if (seq != publishSeq) return@execute
+                adapter.updateLayoutParams(layoutMinWidth, layoutFlexGrow)
+                adapter.updateCandidates(acc, filteredTotal, highlightedIndex)
+                if (acc.isEmpty()) refreshUnrolled(0)
+                val display = acc.firstOrNull { it.index == highlightedIndex } ?: acc.firstOrNull()
+                filterController.setDisplayCandidate(display?.candidate?.text)
+            }
+        }
+    }
+
+    private fun applyFillStyle(visibleCount: Int, maxSpanCount: Int) {
         when (fillStyle) {
             CompactCandidateMode.NEVER_FILL -> {
                 layoutMinWidth = 0
@@ -187,9 +280,9 @@ class CompactCandidateDelegate(override val di: DI) :
 
             CompactCandidateMode.AUTO_FILL -> {
                 layoutMinWidth = view.width / maxSpanCount - separatorDrawable.intrinsicWidth
-                layoutFlexGrow = if (candidates.size < maxSpanCount) 0f else 1f
+                layoutFlexGrow = if (visibleCount < maxSpanCount) 0f else 1f
                 // [^1] total candidates count < maxSpanCount
-                secondLayoutPassNeeded = candidates.size < maxSpanCount
+                secondLayoutPassNeeded = visibleCount < maxSpanCount
                 secondLayoutPassDone = false
             }
 
@@ -198,14 +291,6 @@ class CompactCandidateDelegate(override val di: DI) :
                 layoutFlexGrow = 1f
                 secondLayoutPassNeeded = false
             }
-        }
-
-        adapter.updateLayoutParams(layoutMinWidth, layoutFlexGrow)
-        adapter.updateCandidates(candidates, total, highlighted)
-
-        // not sure why empty candidates won't trigger `FlexboxLayoutManager#onLayoutCompleted()`
-        if (candidates.isEmpty()) {
-            refreshUnrolled(0)
         }
     }
 }

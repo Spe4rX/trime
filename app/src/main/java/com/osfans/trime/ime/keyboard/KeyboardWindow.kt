@@ -18,7 +18,9 @@ import com.osfans.trime.core.SchemaItem
 import com.osfans.trime.daemon.RimeSession
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.model.TextKeyboard
+import androidx.lifecycle.lifecycleScope
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -30,6 +32,8 @@ import com.osfans.trime.util.isLandscape
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.kodein.di.DI
 import org.kodein.di.instance
@@ -52,6 +56,7 @@ class KeyboardWindow(di: DI) :
     private val popup: PopupDelegate by instance()
     private val enterKeyDisplay: EnterKeyDisplayDelegate by instance()
     private val broadcaster: InputBroadcaster by instance()
+    private val filterController: CandidateFilterController by instance()
 
     private val cursorCapsMode: Int
         get() =
@@ -111,6 +116,9 @@ class KeyboardWindow(di: DI) :
         keyboardView = context.frameLayout(R.id.keyboard_view)
         keyboardView.addOnLayoutChangeListener(onKeyboardViewLayoutChangeListener)
         attachKeyboard(evalKeyboard(".default"))
+        service.lifecycleScope.launch {
+            filterController.state.collect { applyFilterState(it) }
+        }
         return keyboardView
     }
 
@@ -208,6 +216,21 @@ class KeyboardWindow(di: DI) :
             }
         }
         broadcaster.onKeyboardChanged(target)
+        applyFilterState(filterController.current)
+    }
+
+    private fun applyFilterState(state: CandidateFilterController.State) {
+        val view = currentKeyboardView ?: return
+        if (state.showCompactFilter) {
+            view.applyCombinationFilters(
+                state.snapshot.filterItems,
+                state.snapshot.selectedIndex,
+            ) { index, syllable ->
+                filterController.onFilterClick(index, syllable)
+            }
+        } else {
+            view.restoreCombinationFilters()
+        }
     }
 
     private fun smartMatchKeyboard(): String {

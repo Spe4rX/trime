@@ -15,7 +15,10 @@ import com.osfans.trime.daemon.launchOnReady
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.core.TouchEventReceiverWindow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.kodein.di.DI
 import org.kodein.di.DIAware
 import org.kodein.di.instance
@@ -29,6 +32,7 @@ class PreeditDelegate(override val di: DI) :
     private val context: ContextThemeWrapper by instance()
     private val scope: ThemeScope by instance()
     private val rime: RimeSession by instance()
+    private val filterController: CandidateFilterController by instance()
 
     private val theme: Theme
         get() = scope.theme
@@ -73,10 +77,41 @@ class PreeditDelegate(override val di: DI) :
 
     private val touchEventReceiverWindow = TouchEventReceiverWindow(ui.root)
 
+    private var lastComposition = CompositionProto()
+    private var hiddenForUnroll = false
+
+    init {
+        rime.lifecycleScope.launch(Dispatchers.Main) {
+            filterController.state.collect { applyDisplay() }
+        }
+    }
+
+    fun setHiddenForUnroll(hidden: Boolean) {
+        hiddenForUnroll = hidden
+        applyDisplay()
+    }
+
     override fun onCompositionUpdate(data: CompositionProto) {
-        ui.update(data)
+        lastComposition = data
+        applyDisplay()
+    }
+
+    private fun applyDisplay() {
+        if (hiddenForUnroll) {
+            ui.root.visibility = View.INVISIBLE
+            touchEventReceiverWindow.dismiss()
+            return
+        }
+        val reading = filterController.current.displayReading
+        if (!reading.isNullOrEmpty() && lastComposition.length > 0) {
+            ui.updateLabel(reading)
+            ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
+            touchEventReceiverWindow.dismiss()
+            return
+        }
+        ui.update(lastComposition)
         ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
-        if (data.length > 0) {
+        if (lastComposition.length > 0) {
             touchEventReceiverWindow.show()
         } else {
             touchEventReceiverWindow.dismiss()

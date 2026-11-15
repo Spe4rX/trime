@@ -34,7 +34,10 @@ import com.osfans.trime.ime.bar.ui.CandidateUi
 import com.osfans.trime.ime.bar.ui.TabUi
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.unrolled.window.BaseUnrolledCandidateWindow
 import com.osfans.trime.ime.candidates.unrolled.window.FlexboxUnrolledCandidateWindow
+import com.osfans.trime.ime.composition.PreeditDelegate
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
 import com.osfans.trime.ime.keyboard.KeyBehavior
@@ -72,6 +75,8 @@ class InputBarDelegate(override val di: DI) :
     private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
     private val candidate: CompactCandidateDelegate by instance()
     private val rime: RimeSession by instance()
+    private val filterController: CandidateFilterController by instance()
+    private val preedit: PreeditDelegate by instance()
 
     val themedHeight = theme.style.run { candidateViewHeight + commentHeight }
 
@@ -184,6 +189,7 @@ class InputBarDelegate(override val di: DI) :
             unrollButton.apply {
                 onSwipe = swipeDownHideKeyboardCallback
             }
+            onModeClick = { singleChar -> filterController.setSingleChar(singleChar) }
         }
     }
 
@@ -231,6 +237,15 @@ class InputBarDelegate(override val di: DI) :
 
     private fun setUnrollButtonEnabled(enabled: Boolean) {
         candidateUi.unrollButton.visibility = if (enabled) View.VISIBLE else View.INVISIBLE
+    }
+
+    init {
+        service.lifecycleScope.launch {
+            filterController.state.collect { state ->
+                candidateUi.setSingleChar(state.singleChar)
+                candidateUi.setReading(state.displayReading)
+            }
+        }
     }
 
     override fun onCandidateListUpdate(data: Candidates.Bulk) {
@@ -298,6 +313,10 @@ class InputBarDelegate(override val di: DI) :
     }
 
     override fun onWindowAttached(window: BoardWindow) {
+        if (window is BaseUnrolledCandidateWindow) {
+            candidateUi.setExpanded(true)
+            preedit.setHiddenForUnroll(true)
+        }
         if (window is BoardWindow.BarBoardWindow) {
             tabUi.setTitle(window.title)
             window.onCreateBarView()?.let { tabUi.addExternal(it, window.showTitle) }
@@ -309,6 +328,10 @@ class InputBarDelegate(override val di: DI) :
     }
 
     override fun onWindowDetached(window: BoardWindow) {
+        if (window is BaseUnrolledCandidateWindow) {
+            candidateUi.setExpanded(false)
+            preedit.setHiddenForUnroll(false)
+        }
         barStateMachine.push(QuickBarStateMachine.TransitionEvent.WindowDetached)
     }
 

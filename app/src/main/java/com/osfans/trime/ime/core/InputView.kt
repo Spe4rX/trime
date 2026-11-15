@@ -29,6 +29,7 @@ import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.candidates.popup.PopupCandidatesMode
 import com.osfans.trime.ime.composition.PreeditDelegate
 import com.osfans.trime.ime.keyboard.CommonKeyboardActionListener
@@ -116,6 +117,7 @@ class InputView(
         bindSingleton { BoardWindowManager(di) }
         bindSingleton { InputBarDelegate(di) }
         bindSingleton { CompactCandidateDelegate(di) }
+        bindSingleton { CandidateFilterController(di) }
         bindSingleton { KeyboardWindow(di) }
         bindSingleton { LiquidWindow(di) }
     }
