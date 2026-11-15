@@ -55,7 +55,64 @@ object CandidateMatcher {
         } else {
             matchPath(codePoints, 0, 0, InputEncoding.skipDelimiters(remaining), table, locks, mode)
         } ?: return null
-        return path.joinToString(" ") { formatDisplay(it) }
+        return clipPathToTyped(path, locks, remaining, mode)
+            .joinToString(" ") { formatDisplay(it) }
+            .ifEmpty { null }
+    }
+
+    /**
+     * Show locked syllables as chosen, and only the already-typed prefix of
+     * any later syllable. Do not auto-complete "h" to "hao", or show a
+     * predictive extra syllable the user has not typed yet.
+     */
+    fun clipPathToTyped(
+        path: List<String>,
+        locks: List<String>,
+        remaining: String,
+        mode: InputMode,
+    ): List<String> {
+        if (mode == InputMode.NONE) return path
+        val out = ArrayList<String>()
+        var rem = InputEncoding.skipDelimiters(remaining)
+        var lockIndex = 0
+        for (reading in path) {
+            if (lockIndex < locks.size) {
+                val lock = InputEncoding.normalizeSyllable(locks[lockIndex])
+                if (lock.isNotEmpty()) out += lock
+                lockIndex++
+                continue
+            }
+            if (rem.isEmpty()) break
+            val encoded = InputEncoding.encode(reading, mode)
+            if (encoded.isEmpty()) break
+            when {
+                rem.startsWith(encoded) -> {
+                    out += reading
+                    rem = InputEncoding.skipDelimiters(rem.substring(encoded.length))
+                }
+                encoded.startsWith(rem) -> {
+                    val prefix = prefixOfReading(reading, rem, mode)
+                    if (prefix.isNotEmpty()) out += prefix
+                    rem = ""
+                }
+                else -> break
+            }
+        }
+        return out
+    }
+
+    private fun prefixOfReading(reading: String, encodedPrefix: String, mode: InputMode): String {
+        if (encodedPrefix.isEmpty()) return ""
+        if (mode == InputMode.LETTER) {
+            return if (reading.startsWith(encodedPrefix)) encodedPrefix else reading.take(encodedPrefix.length)
+        }
+        val buf = StringBuilder()
+        for (ch in reading) {
+            buf.append(ch)
+            val enc = InputEncoding.encode(buf.toString(), mode)
+            if (enc.length >= encodedPrefix.length) return buf.toString()
+        }
+        return buf.toString()
     }
 
     fun formatDisplay(syllable: String): String = syllable

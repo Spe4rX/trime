@@ -150,6 +150,27 @@ class CandidateFilterTest :
             }
         }
 
+        Given("a partial syllable that has not been fully typed") {
+            Then("the reading label stays at the typed prefix, not the first candidate's full pinyin") {
+                val letterH = CandidateFilter.compute("h", emptyList())
+                CandidateFilter.displayReading("好", table, letterH) shouldBe "h"
+                CandidateFilter.displayReading("好", table, CandidateFilter.compute("ha", emptyList())) shouldBe "ha"
+                CandidateFilter.displayReading("好", table, CandidateFilter.compute("hao", emptyList())) shouldBe "hao"
+                CandidateFilter.displayReading("你", table, CandidateFilter.compute("n", emptyList())) shouldBe "n"
+                CandidateFilter.displayReading("你好", table, CandidateFilter.compute("ni", emptyList())) shouldBe "ni"
+                CandidateFilter.displayReading("你好", table, CandidateFilter.compute("niha", emptyList())) shouldBe "ni ha"
+            }
+
+            Then("T9 digits also map only to the typed pinyin prefix") {
+                CandidateFilter.displayReading("好", table, CandidateFilter.compute("4", emptyList())) shouldBe "h"
+                CandidateFilter.displayReading("好", table, CandidateFilter.compute("42", emptyList())) shouldBe "ha"
+                CandidateFilter.displayReading("好", table, CandidateFilter.compute("426", emptyList())) shouldBe "hao"
+                CandidateFilter.displayReading("你好", table, CandidateFilter.compute("64", emptyList())) shouldBe "ni"
+                CandidateFilter.displayReading("你好", table, CandidateFilter.compute("644", emptyList())) shouldBe "ni h"
+                CandidateFilter.displayReading("你好", table, CandidateFilter.compute("64426", emptyList())) shouldBe "ni hao"
+            }
+        }
+
         Given("an empty composition") {
             Then("locks and combinations are cleared") {
                 val snapshot = CandidateFilter.compute("", listOf("mi"))
