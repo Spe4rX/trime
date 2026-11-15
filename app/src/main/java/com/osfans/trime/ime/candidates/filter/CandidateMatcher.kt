@@ -183,7 +183,9 @@ object CandidateMatcher {
         var i = charIndex
         while (i < cps.size && !isHan(cps[i])) i++
         if (i >= cps.size) {
-            return if (lockIndex >= locks.size) emptyList() else null
+            // Shorter words may only cover a prefix of the locked syllables
+            // (姑 after locking gu, gu, ga, ga). Keep them as incomplete matches.
+            return emptyList()
         }
         val readings = table.readings(cps[i])
         if (readings.isEmpty()) return null

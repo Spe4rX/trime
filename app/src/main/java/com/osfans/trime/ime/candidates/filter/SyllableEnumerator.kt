@@ -37,10 +37,18 @@ object SyllableEnumerator {
         val kept = InputEncoding.compatibleLocks(rawInput, locks, mode)
         val remaining = InputEncoding.remainingAfterLocks(rawInput, kept, mode)
         val head = prefixBeforeRemaining(rawInput, remaining)
-        val cuts = boundaryCuts(remaining, mode)
         val out = ArrayList<String>()
+        if (remaining.isEmpty()) {
+            // Locks already consumed the input: still offer shorter confirmed
+            // prefixes so 单字 / 短词 remain available.
+            val source = head.ifEmpty { rawInput }
+            for (cut in boundaryCuts(source, mode)) {
+                if (cut.isNotEmpty() && cut != rawInput) out += cut
+            }
+            return out.distinct()
+        }
         if (head.isNotEmpty()) out += head
-        for (cut in cuts) {
+        for (cut in boundaryCuts(remaining, mode)) {
             val combined = head + cut
             if (combined.isNotEmpty() && combined != rawInput) out += combined
         }

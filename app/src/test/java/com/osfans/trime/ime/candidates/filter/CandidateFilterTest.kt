@@ -24,6 +24,9 @@ class CandidateFilterTest :
                 '高'.code to listOf("gao"),
                 '行'.code to listOf("xing", "hang", "heng"),
                 '银'.code to listOf("yin"),
+                '姑'.code to listOf("gu"),
+                '咕'.code to listOf("gu"),
+                '嘎'.code to listOf("ga"),
             ),
         )
 
@@ -248,6 +251,40 @@ class CandidateFilterTest :
                 )
                 typical.confirmed shouldBe 0xFF23948E.toInt()
                 typical.remaining shouldBe 0xFF5A676E.toInt()
+            }
+        }
+
+        Given("T9 48484242 after locking gu, gu, ga, ga") {
+            val snapshot = CandidateFilter.compute("48484242", listOf("gu", "gu", "ga", "ga"))
+
+            Then("the locks consume the input and the bar keeps the pinyin") {
+                snapshot.mode shouldBe InputMode.T9
+                snapshot.locks shouldBe listOf("gu", "gu", "ga", "ga")
+                snapshot.remaining shouldBe ""
+                snapshot.nextSyllables shouldBe emptyList()
+                val parts = CandidateFilter.barParts(snapshot, null)
+                parts.confirmed shouldBe "gu gu ga ga"
+                parts.remaining shouldBe null
+            }
+
+            Then("shorter words and single characters still match") {
+                CandidateFilter.matches("咕咕嘎嘎", table, snapshot, singleChar = false) shouldBe true
+                CandidateFilter.matches("咕咕", table, snapshot, singleChar = false) shouldBe true
+                CandidateFilter.matches("姑", table, snapshot, singleChar = false) shouldBe true
+                CandidateFilter.matches("你", table, snapshot, singleChar = false) shouldBe false
+                CandidateFilter.leftoverRawInput("姑", table, snapshot) shouldBe "484242"
+                CandidateFilter.leftoverRawInput("咕咕", table, snapshot) shouldBe "4242"
+                CandidateFilter.leftoverRawInput("咕咕嘎嘎", table, snapshot) shouldBe ""
+            }
+
+            Then("raw prefixes still include shorter confirmed syllables") {
+                val prefixes = SyllableEnumerator.rawPrefixes(
+                    "48484242",
+                    InputMode.T9,
+                    listOf("gu", "gu", "ga", "ga"),
+                )
+                prefixes.shouldContainAll("48", "4848", "484842")
+                prefixes.contains("48484242") shouldBe false
             }
         }
 

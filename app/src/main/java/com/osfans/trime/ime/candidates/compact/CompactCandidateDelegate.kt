@@ -24,6 +24,7 @@ import com.osfans.trime.ime.bar.InputBarDelegate
 import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.core.CandidateProto
+import com.osfans.trime.ime.candidates.filter.CandidateFilter
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.candidates.filter.SegmentCommit
 import com.osfans.trime.ime.core.TrimeInputMethodService
@@ -113,14 +114,31 @@ class CompactCandidateDelegate(override val di: DI) :
     val adapter by lazy {
         CompactCandidateViewAdapter(scope).apply {
             setOnItemClickListener { _, _, position ->
-                val index = items.getOrNull(position)?.index ?: return@setOnItemClickListener
+                val item = items.getOrNull(position) ?: return@setOnItemClickListener
                 rime.launchOnReady { api ->
-                    api.selectCandidate(index, global = true)
-                    SegmentCommit.commitIfNeeded(api, service, filterController)
+                    if (item.index >= 0) {
+                        api.selectCandidate(item.index, global = true)
+                        SegmentCommit.commitIfNeeded(api, service, filterController)
+                    } else {
+                        val snapshot = filterController.current.snapshot
+                        val leftover = CandidateFilter.leftoverRawInput(
+                            item.candidate.text,
+                            filterController.table,
+                            snapshot,
+                        ) ?: ""
+                        SegmentCommit.commitSynthetic(
+                            api,
+                            service,
+                            filterController,
+                            item.candidate.text,
+                            leftover,
+                        )
+                    }
                 }
             }
             setOnItemLongClickListener { _, view, position ->
                 val item = items.getOrNull(position) ?: return@setOnItemLongClickListener false
+                if (item.index < 0) return@setOnItemLongClickListener true
                 inputView.showCandidateActionMenu(item.index, item.candidate.text, view, global = true)
                 true
             }
@@ -261,6 +279,23 @@ class CompactCandidateDelegate(override val di: DI) :
                 }
             }
             if (start >= rimeTotal) exhausted = true
+            val prefixes = CandidateFilter.prefixInputs(filterController.current.snapshot)
+            if (prefixes.isNotEmpty() && acc.size < want) {
+                val seen = acc.mapTo(HashSet()) { it.candidate.text }
+                var synthetic = -1
+                for (input in prefixes.sortedByDescending { it.length }) {
+                    if (acc.size >= want) break
+                    val chunk = api.peekCandidates(input, 24)
+                    for (candidate in chunk) {
+                        if (acc.size >= want) break
+                        if (!filterController.matches(candidate.text)) continue
+                        if (!seen.add(candidate.text)) continue
+                        acc += IndexedCandidate(synthetic, candidate)
+                        synthetic--
+                    }
+                }
+                if (acc.size >= want) exhausted = false
+            }
             val filteredTotal = if (exhausted) acc.size else acc.size + 1
             val highlightedIndex = acc.firstOrNull { it.index == highlighted }?.index
                 ?: acc.firstOrNull()?.index
