@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.KeyEvent
 import com.mikepenz.iconics.IconicsDrawable
 import com.mikepenz.iconics.utils.sizeDp
+import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.popup.PopupAction
@@ -44,6 +45,13 @@ class KeyView(
 
     private var keyPressed = false
     override fun isPressed(): Boolean = keyPressed
+
+    /**
+     * When false, this key is a cell inside a [ScrollRegionView] capsule:
+     * skip the rounded key chrome, and only fill a press highlight.
+     */
+    var drawKeyBackground: Boolean = true
+    private val embeddedPressPaint = Paint().apply { style = Paint.Style.FILL }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
@@ -271,6 +279,7 @@ class KeyView(
 
         drawBackground(canvas, key)
 
+
         val label = key.getLabel().let {
             if (it == "enter_labels") keyboardView.labelEnter else it
         }
@@ -291,6 +300,18 @@ class KeyView(
     }
 
     private fun drawBackground(canvas: Canvas, k: Key) {
+        if (!drawKeyBackground) {
+            if (keyPressed) {
+                val color = runCatching { ColorManager.getColor("hilited_off_key_back_color") }.getOrNull()
+                    ?: runCatching { ColorManager.getColor("hilited_key_back_color") }.getOrNull()
+                if (color != null) {
+                    embeddedPressPaint.color = color
+                    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), embeddedPressPaint)
+                }
+            }
+            return
+        }
+
         val bg = k.getBackgroundDrawable() ?: return
 
         if (bg is GradientDrawable) {

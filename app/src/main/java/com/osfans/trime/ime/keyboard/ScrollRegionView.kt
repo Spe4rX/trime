@@ -9,9 +9,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.drawable.GradientDrawable
+import android.graphics.Rect
+import android.graphics.RectF
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -31,8 +32,9 @@ import splitties.dimensions.dp
  * the child key press (standard Android [ACTION_CANCEL] after the scroll view
  * takes over).
  *
- * A slightly recessed track and edge chevrons mark the slot as scrollable
- * when content overflows the viewport.
+ * The slot is drawn as one rounded bar (the same fill as a key) with hairline
+ * separators between items, matching the layout sketches: a grouped strip,
+ * not a recessed track or overlay arrows.
  */
 @SuppressLint("ViewConstructor")
 class ScrollRegionView(
@@ -47,18 +49,27 @@ class ScrollRegionView(
     private val region = requireNotNull(key.scrollRegion)
     private val horizontal = region.direction == TextKey.Scroll.HORIZONTAL
     private val scroller: ViewGroup
-    private val chevronPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val chevronPath = Path()
-    private val chevronSize = context.dp(10).toFloat()
-    private val fadeLength = context.dp(20)
+    private val content: LinearLayout
+    private val insetH = keyboard.horizontalGap / 2
+    private val insetV = keyboard.verticalGap / 2
+    private val cornerRadius = dp(key.roundCorner).toFloat()
+    private val separatorInset = context.dp(8).toFloat()
+
+    private val clipRect = RectF()
+    private val childRect = Rect()
+    private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val separatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = context.dp(1).toFloat().coerceAtLeast(1f)
+    }
 
     init {
         clipToPadding = true
-        clipChildren = true
+        clipChildren = false
         setWillNotDraw(false)
-        applyTrackBackground(key)
+        applyCapsuleColors()
 
-        val content = LinearLayout(context).apply {
+        content = LinearLayout(context).apply {
             orientation = if (horizontal) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         }
@@ -66,12 +77,7 @@ class ScrollRegionView(
             val keyView = KeyView(context, theme, child, keyboard, keyboardView, keyboardActionListener).apply {
                 id = child.index.takeIf { it >= 0 } ?: index
                 layoutParams = LinearLayout.LayoutParams(child.width, child.height)
-                setPadding(
-                    keyboard.horizontalGap / 2,
-                    keyboard.verticalGap / 2,
-                    keyboard.horizontalGap / 2,
-                    keyboard.verticalGap / 2,
-                )
+                drawKeyBackground = false
             }
             content.addView(keyView)
         }
@@ -81,8 +87,6 @@ class ScrollRegionView(
                 isFillViewport = false
                 isHorizontalScrollBarEnabled = false
                 overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
-                isHorizontalFadingEdgeEnabled = true
-                setFadingEdgeLength(fadeLength)
                 isNestedScrollingEnabled = true
                 addView(
                     content,
@@ -97,8 +101,6 @@ class ScrollRegionView(
                 isFillViewport = false
                 isVerticalScrollBarEnabled = false
                 overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
-                isVerticalFadingEdgeEnabled = true
-                setFadingEdgeLength(fadeLength)
                 isNestedScrollingEnabled = true
                 addView(
                     content,
@@ -109,86 +111,80 @@ class ScrollRegionView(
                 )
             }
         }
-        addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(
+            scroller,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
+                leftMargin = insetH
+                topMargin = insetV
+                rightMargin = insetH
+                bottomMargin = insetV
+            },
+        )
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
-    private fun applyTrackBackground(key: Key) {
-        val base = runCatching { ColorManager.getColor("keyboard_back_color") }.getOrNull() ?: return
-        val ink = runCatching { ColorManager.getColor("key_text_color") }.getOrNull() ?: 0xFF000000.toInt()
-        val track = ColorUtils.blendARGB(base, ink, 0.08f)
-        background = GradientDrawable().apply {
-            setColor(track)
-            cornerRadius = dp(key.roundCorner)
-        }
-        chevronPaint.color = ColorUtils.setAlphaComponent(ink, 0x99)
-        chevronPaint.style = Paint.Style.FILL
+    private fun applyCapsuleColors() {
+        // These slots are usually themed as functional keys (gray bar, light text).
+        // Fill the grouped capsule with that same color so labels stay readable.
+        val fill = runCatching { ColorManager.getColor("off_key_back_color") }.getOrNull()
+            ?: runCatching { ColorManager.getColor("key_back_color") }.getOrNull()
+        val ink = runCatching { ColorManager.getColor("off_key_text_color") }.getOrNull()
+            ?: runCatching { ColorManager.getColor("key_text_color") }.getOrNull()
+            ?: 0xFFFFFFFF.toInt()
+        val bar = fill ?: ColorUtils.setAlphaComponent(ink, 0x4D)
+        trackPaint.color = bar
+        val hairline = if (ColorUtils.calculateLuminance(bar) < 0.6) 0xFFFFFFFF.toInt() else 0xFF000000.toInt()
+        separatorPaint.color = ColorUtils.setAlphaComponent(hairline, 0x4D)
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        // Chevrons depend on whether the scroller can still move.
-        invalidate()
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        clipRect.set(
+            insetH.toFloat(),
+            insetV.toFloat(),
+            (w - insetH).toFloat(),
+            (h - insetV).toFloat(),
+        )
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        if (!clipRect.isEmpty) {
+            canvas.drawRoundRect(clipRect, cornerRadius, cornerRadius, trackPaint)
+        }
     }
 
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
-        drawChevrons(canvas)
+        drawSeparators(canvas)
     }
 
-    private fun drawChevrons(canvas: Canvas) {
-        if (chevronPaint.color == 0 || width == 0 || height == 0) return
-        val inset = chevronSize
-        if (horizontal) {
-            if (scroller.canScrollHorizontally(-1)) {
-                drawChevron(canvas, inset, height / 2f, left = true)
-            }
-            if (scroller.canScrollHorizontally(1)) {
-                drawChevron(canvas, width - inset, height / 2f, left = false)
-            }
-        } else {
-            if (scroller.canScrollVertically(-1)) {
-                drawChevron(canvas, width / 2f, inset, up = true)
-            }
-            if (scroller.canScrollVertically(1)) {
-                drawChevron(canvas, width / 2f, height - inset, up = false)
-            }
-        }
-    }
-
-    private fun drawChevron(
-        canvas: Canvas,
-        cx: Float,
-        cy: Float,
-        left: Boolean = false,
-        up: Boolean = false,
-    ) {
-        chevronPath.reset()
-        val s = chevronSize
-        when {
-            horizontal && left -> {
-                chevronPath.moveTo(cx + s / 2f, cy - s)
-                chevronPath.lineTo(cx - s / 2f, cy)
-                chevronPath.lineTo(cx + s / 2f, cy + s)
-            }
-            horizontal && !left -> {
-                chevronPath.moveTo(cx - s / 2f, cy - s)
-                chevronPath.lineTo(cx + s / 2f, cy)
-                chevronPath.lineTo(cx - s / 2f, cy + s)
-            }
-            !horizontal && up -> {
-                chevronPath.moveTo(cx - s, cy + s / 2f)
-                chevronPath.lineTo(cx, cy - s / 2f)
-                chevronPath.lineTo(cx + s, cy + s / 2f)
-            }
-            else -> {
-                chevronPath.moveTo(cx - s, cy - s / 2f)
-                chevronPath.lineTo(cx, cy + s / 2f)
-                chevronPath.lineTo(cx + s, cy - s / 2f)
+    private fun drawSeparators(canvas: Canvas) {
+        val last = content.childCount - 1
+        if (last <= 0) return
+        for (i in 0 until last) {
+            val child = content.getChildAt(i)
+            childRect.set(0, 0, child.width, child.height)
+            offsetDescendantRectToMyCoords(child, childRect)
+            if (horizontal) {
+                val x = childRect.right.toFloat()
+                canvas.drawLine(
+                    x,
+                    childRect.top + separatorInset,
+                    x,
+                    childRect.bottom - separatorInset,
+                    separatorPaint,
+                )
+            } else {
+                val y = childRect.bottom.toFloat()
+                canvas.drawLine(
+                    childRect.left + separatorInset,
+                    y,
+                    childRect.right - separatorInset,
+                    y,
+                    separatorPaint,
+                )
             }
         }
-        chevronPath.close()
-        canvas.drawPath(chevronPath, chevronPaint)
     }
 
     /**
