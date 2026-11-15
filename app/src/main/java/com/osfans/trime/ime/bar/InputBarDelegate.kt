@@ -35,6 +35,7 @@ import com.osfans.trime.ime.bar.ui.TabUi
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.readingColors
 import com.osfans.trime.ime.candidates.unrolled.window.BaseUnrolledCandidateWindow
 import com.osfans.trime.ime.candidates.unrolled.window.FlexboxUnrolledCandidateWindow
 import com.osfans.trime.ime.composition.PreeditDelegate
@@ -190,6 +191,7 @@ class InputBarDelegate(override val di: DI) :
                 onSwipe = swipeDownHideKeyboardCallback
             }
             onModeClick = { singleChar -> filterController.setSingleChar(singleChar) }
+            onReadingClick = { filterController.popLastLock() }
         }
     }
 
@@ -243,7 +245,19 @@ class InputBarDelegate(override val di: DI) :
         service.lifecycleScope.launch {
             filterController.state.collect { state ->
                 candidateUi.setSingleChar(state.singleChar)
-                candidateUi.setReading(state.barLabel)
+                val barColors = readingColors(
+                    textColor = scope.colors.textColor,
+                    hilitedTextColor = scope.colors.hilitedTextColor,
+                    candidateTextColor = scope.colors.candidateTextColor,
+                    accentHint = scope.colors.hilitedCandidateBackColor,
+                )
+                candidateUi.setReading(
+                    parts = state.barParts,
+                    fallback = state.barLabel,
+                    hanziPrefix = state.confirmedPrefix,
+                    confirmedColor = barColors.confirmed,
+                    normalColor = barColors.remaining,
+                )
             }
         }
     }

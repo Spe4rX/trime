@@ -272,6 +272,13 @@ class Rime :
         getRimeCandidates(startIndex, limit)
     }
 
+    override suspend fun peekCandidates(
+        input: String,
+        limit: Int,
+    ): Array<CandidateProto> = withRimeContext {
+        peekRimeCandidates(input, limit)
+    }
+
     override suspend fun setCandidatePagingMode(enabled: Boolean) = withRimeContext {
         pagingMode = enabled
         emitResponse()
@@ -585,6 +592,12 @@ class Rime :
         @JvmStatic
         external fun getRimeCandidates(
             startIndex: Int,
+            limit: Int,
+        ): Array<CandidateProto>
+
+        @JvmStatic
+        external fun peekRimeCandidates(
+            input: String,
             limit: Int,
         ): Array<CandidateProto>
 

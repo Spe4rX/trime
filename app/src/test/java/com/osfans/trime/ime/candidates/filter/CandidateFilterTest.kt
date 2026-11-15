@@ -171,6 +171,86 @@ class CandidateFilterTest :
             }
         }
 
+        Given("stepwise filtering") {
+            Then("the left list shows only the next level, not already confirmed locks") {
+                val locked = CandidateFilter.compute("64426", listOf("mi"))
+                locked.filterItems shouldBe locked.nextSyllables
+                locked.filterItems.contains("mi") shouldBe false
+                locked.selectedIndex shouldBe -1
+                CandidateFilter.popLastLock(listOf("mi", "gao")) shouldBe listOf("mi")
+            }
+
+            Then("the bar splits confirmed pinyin from the remaining reading") {
+                val locked = CandidateFilter.compute("nihao", listOf("ni"))
+                val parts = CandidateFilter.barParts(locked, "ni hao")
+                parts.confirmed shouldBe "ni"
+                parts.remaining shouldBe "hao"
+                val four = CandidateFilter.barParts(
+                    CandidateFilter.compute("gugugaga", listOf("gu")),
+                    "gu gu ga ga",
+                )
+                four.confirmed shouldBe "gu"
+                four.remaining shouldBe "gu'ga'ga"
+            }
+
+            Then("raw prefixes stop at syllable boundaries and omit the full input") {
+                val full = SyllableEnumerator.rawPrefixes("64426", InputMode.T9)
+                full.shouldContainAll("6", "64", "644", "6442")
+                full.contains("64426") shouldBe false
+                val afterMi = SyllableEnumerator.rawPrefixes("64426", InputMode.T9, listOf("mi"))
+                afterMi.shouldContainAll("64", "644", "6442")
+                afterMi.contains("64426") shouldBe false
+                val letters = SyllableEnumerator.rawPrefixes("nihao", InputMode.LETTER)
+                letters.shouldContainAll("n", "ni", "nih", "niha")
+                letters.contains("nihao") shouldBe false
+            }
+
+            Then("committing a shorter candidate leaves the unused raw input") {
+                val snapshot = CandidateFilter.compute("nihao", emptyList())
+                CandidateFilter.leftoverRawInput("你", table, snapshot) shouldBe "hao"
+                CandidateFilter.leftoverRawInput("你好", table, snapshot) shouldBe ""
+                val t9 = CandidateFilter.compute("64426", emptyList())
+                CandidateFilter.leftoverRawInput("你", table, t9) shouldBe "426"
+                CandidateFilter.leftoverRawInput("米糕", table, t9) shouldBe ""
+            }
+        }
+
+
+        Given("reading bar colors") {
+            Then("the more chromatic theme color is used for confirmed pinyin") {
+                // grok light: text is accent blue, hilited text is black
+                val light = readingColors(
+                    textColor = 0xFF3266A0.toInt(),
+                    hilitedTextColor = 0xFF000000.toInt(),
+                    candidateTextColor = 0xFF000000.toInt(),
+                    accentHint = 0xFF3266A0.toInt(),
+                )
+                light.confirmed shouldBe 0xFF3266A0.toInt()
+                light.remaining shouldBe 0xFF000000.toInt()
+
+                // grok dark: text is light blue, hilited text is white,
+                // candidate back is the stronger accent blue
+                val dark = readingColors(
+                    textColor = 0xFF8AB4E8.toInt(),
+                    hilitedTextColor = 0xFFFFFFFF.toInt(),
+                    candidateTextColor = 0xFFFFFFFF.toInt(),
+                    accentHint = 0xFF3266A0.toInt(),
+                )
+                dark.confirmed shouldBe 0xFF3266A0.toInt()
+                dark.remaining shouldBe 0xFFFFFFFF.toInt()
+
+                // a typical scheme with the accent on hilited_text_color
+                val typical = readingColors(
+                    textColor = 0xFF5A676E.toInt(),
+                    hilitedTextColor = 0xFF23948E.toInt(),
+                    candidateTextColor = 0xFF5A676E.toInt(),
+                    accentHint = 0xFFD3D7DA.toInt(),
+                )
+                typical.confirmed shouldBe 0xFF23948E.toInt()
+                typical.remaining shouldBe 0xFF5A676E.toInt()
+            }
+        }
+
         Given("an empty composition") {
             Then("locks and combinations are cleared") {
                 val snapshot = CandidateFilter.compute("", listOf("mi"))

@@ -88,5 +88,11 @@ interface RimeApi {
         limit: Int,
     ): Array<CandidateProto>
 
+    /** Candidates for [input] from a temporary session, not the live composition. */
+    suspend fun peekCandidates(
+        input: String,
+        limit: Int,
+    ): Array<CandidateProto>
+
     suspend fun setCandidatePagingMode(enabled: Boolean)
 }

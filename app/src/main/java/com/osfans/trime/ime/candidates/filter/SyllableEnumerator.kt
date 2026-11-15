@@ -26,6 +26,62 @@ object SyllableEnumerator {
         return found.sortedWith(compareByDescending<String> { it.length }.thenBy { it })
     }
 
+    /**
+     * Raw-input prefixes that end on a syllable boundary, not including the
+     * full input. Used to query shorter words and single characters for
+     * stepwise filtering. [locks] are consumed first and the locked prefix
+     * itself is included so the confirmed syllable still yields 单字 / 短词.
+     */
+    fun rawPrefixes(rawInput: String, mode: InputMode, locks: List<String> = emptyList()): List<String> {
+        if (mode == InputMode.NONE || rawInput.isEmpty()) return emptyList()
+        val kept = InputEncoding.compatibleLocks(rawInput, locks, mode)
+        val remaining = InputEncoding.remainingAfterLocks(rawInput, kept, mode)
+        val head = prefixBeforeRemaining(rawInput, remaining)
+        val cuts = boundaryCuts(remaining, mode)
+        val out = ArrayList<String>()
+        if (head.isNotEmpty()) out += head
+        for (cut in cuts) {
+            val combined = head + cut
+            if (combined.isNotEmpty() && combined != rawInput) out += combined
+        }
+        return out.distinct()
+    }
+
+    private fun prefixBeforeRemaining(rawInput: String, remaining: String): String {
+        if (remaining.isEmpty()) return rawInput
+        val idx = rawInput.lastIndexOf(remaining)
+        if (idx >= 0 && InputEncoding.skipDelimiters(rawInput.substring(idx)) == remaining) {
+            return rawInput.substring(0, idx)
+        }
+        return if (rawInput.endsWith(remaining)) rawInput.dropLast(remaining.length) else ""
+    }
+
+    private fun boundaryCuts(remaining: String, mode: InputMode): List<String> {
+        val rest = InputEncoding.skipDelimiters(remaining)
+        if (rest.isEmpty()) return emptyList()
+        val reachable = BooleanArray(rest.length + 1)
+        reachable[0] = true
+        for (i in 0 until rest.length) {
+            if (!reachable[i]) continue
+            val max = minOf(PinyinSyllables.MAX_LENGTH, rest.length - i)
+            for (len in 1..max) {
+                val key = rest.substring(i, i + len)
+                if (isSyllableToken(key, mode)) reachable[i + len] = true
+            }
+        }
+        val out = ArrayList<String>()
+        for (i in 1..rest.length) {
+            if (reachable[i]) out += rest.substring(0, i)
+        }
+        return out
+    }
+
+    private fun isSyllableToken(token: String, mode: InputMode): Boolean = when (mode) {
+        InputMode.T9 -> token in byT9
+        InputMode.LETTER -> token in PinyinSyllables.ALL
+        InputMode.NONE -> false
+    }
+
     private fun prefixesT9(digits: String): List<String> {
         val out = ArrayList<String>()
         val max = minOf(PinyinSyllables.MAX_LENGTH, digits.length)

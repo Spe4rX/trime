@@ -9,6 +9,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.osfans.trime.R
 import com.osfans.trime.TrimeApplication
+import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.core.Rime
 import com.osfans.trime.core.RimeApi
 import com.osfans.trime.core.RimeLifecycle
@@ -48,7 +49,14 @@ import kotlin.concurrent.withLock
 object RimeDaemon {
     private val realRime by lazy { Rime() }
 
-    private val rimeImpl by lazy { object : RimeApi by realRime {} }
+    private val rimeImpl by lazy {
+        object : RimeApi by realRime {
+            // Explicit forward so a newly added RimeApi method is present on this
+            // delegation object even if an incremental compile missed regenerating it.
+            override suspend fun peekCandidates(input: String, limit: Int): Array<CandidateProto> =
+                realRime.peekCandidates(input, limit)
+        }
+    }
 
     private val sessions = mutableMapOf<String, RimeSession>()
 

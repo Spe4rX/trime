@@ -6,6 +6,9 @@ package com.osfans.trime.ime.bar.ui
 
 import android.content.Context
 import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -14,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import com.osfans.trime.R
+import com.osfans.trime.ime.candidates.filter.CandidateFilter
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import splitties.dimensions.dp
@@ -60,6 +64,7 @@ class CandidateUi(
     val singleButton = modeButton("单字")
 
     var onModeClick: ((singleChar: Boolean) -> Unit)? = null
+    var onReadingClick: (() -> Unit)? = null
 
     private val modeBar = LinearLayout(ctx).apply {
         id = View.generateViewId()
@@ -118,6 +123,7 @@ class CandidateUi(
     init {
         allButton.setOnClickListener { onModeClick?.invoke(false) }
         singleButton.setOnClickListener { onModeClick?.invoke(true) }
+        readingLabel.setOnClickListener { onReadingClick?.invoke() }
         setSingleChar(false)
     }
 
@@ -127,8 +133,49 @@ class CandidateUi(
         modeBar.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
-    fun setReading(text: String?) {
-        readingLabel.text = text.orEmpty()
+    fun setReading(text: CharSequence?) {
+        readingLabel.text = text ?: ""
+    }
+
+    fun setReading(
+        parts: CandidateFilter.BarParts,
+        fallback: String?,
+        hanziPrefix: String?,
+        confirmedColor: Int,
+        normalColor: Int,
+    ) {
+        val prefix = hanziPrefix?.takeIf { it.isNotEmpty() }
+        if (prefix != null) {
+            setReading(prefix)
+            return
+        }
+        if (parts.confirmed == null && parts.remaining == null) {
+            setReading(fallback)
+            return
+        }
+        val sb = SpannableStringBuilder()
+        if (parts.confirmed != null) {
+            val start = sb.length
+            sb.append(parts.confirmed)
+            sb.setSpan(
+                ForegroundColorSpan(confirmedColor),
+                start,
+                sb.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        if (parts.remaining != null) {
+            if (sb.isNotEmpty()) sb.append(' ')
+            val start = sb.length
+            sb.append(parts.remaining)
+            sb.setSpan(
+                ForegroundColorSpan(normalColor),
+                start,
+                sb.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        setReading(sb)
     }
 
     fun setSingleChar(enabled: Boolean) {

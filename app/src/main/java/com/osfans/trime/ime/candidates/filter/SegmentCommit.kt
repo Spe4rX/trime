@@ -49,6 +49,28 @@ object SegmentCommit {
         }
     }
 
+    suspend fun commitSynthetic(
+        api: RimeApi,
+        service: TrimeInputMethodService,
+        filterController: CandidateFilterController,
+        text: String,
+        leftover: String,
+    ) {
+        if (text.isEmpty()) return
+        filterController.beginSegmentCommit()
+        try {
+            withContext(Dispatchers.Main.immediate) {
+                service.commitText(text)
+            }
+            api.clearComposition()
+            leftover.forEach { ch ->
+                api.processKey(ch.code)
+            }
+        } finally {
+            filterController.endSegmentCommit(keepSingleChar = leftover.isNotEmpty())
+        }
+    }
+
     suspend fun commitIfNeeded(
         api: RimeApi,
         service: TrimeInputMethodService,

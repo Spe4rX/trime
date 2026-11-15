@@ -4,6 +4,7 @@
 
 #include <rime_api.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -34,6 +35,10 @@ class Rime {
   static Rime& Instance() {
     static Rime instance;
     return instance;
+  }
+
+  static bool notificationsSuppressed() {
+    return suppressNotifications_.load(std::memory_order_acquire);
   }
 
   void startup(bool fullCheck,
@@ -173,6 +178,48 @@ class Rime {
     return rime->change_page(session(), backward);
   }
 
+  std::vector<CandidateProto> peekCandidates(const std::string& input,
+                                             int limit) {
+    NotificationSuppressor suppress;
+    std::vector<CandidateProto> result;
+    if (input.empty() || limit <= 0) return result;
+    try {
+      SessionHolder peek;
+      auto sid = peek.id();
+      auto schema = currentSchemaId();
+      if (!schema.empty()) {
+        rime->select_schema(sid, schema.data());
+      }
+      static const char* kOptions[] = {"simplification", "extended_charset",
+                                       "ascii_mode",     "full_shape",
+                                       "ascii_punct",    "zh_simp",
+                                       "zh_trad",        nullptr};
+      auto main = session(false);
+      if (main) {
+        for (int i = 0; kOptions[i]; ++i) {
+          rime->set_option(sid, kOptions[i], rime->get_option(main, kOptions[i]));
+        }
+      }
+      if (!rime->simulate_key_sequence(sid, input.data())) {
+        return result;
+      }
+      result.reserve(limit);
+      RimeCandidateListIterator iter{};
+      if (rime->candidate_list_from_index(sid, &iter, 0)) {
+        int count = 0;
+        while (rime->candidate_list_next(&iter)) {
+          if (count >= limit) break;
+          result.emplace_back(iter.candidate);
+          ++count;
+        }
+        rime->candidate_list_end(&iter);
+      }
+    } catch (...) {
+      return {};
+    }
+    return result;
+  }
+
   std::vector<CandidateProto> getCandidates(int startIndex, int limit) {
     std::vector<CandidateProto> result;
     result.reserve(limit);
@@ -209,6 +256,18 @@ class Rime {
   }
 
  private:
+  static std::atomic<bool> suppressNotifications_;
+
+  class NotificationSuppressor {
+   public:
+    NotificationSuppressor() {
+      suppressNotifications_.store(true, std::memory_order_release);
+    }
+    ~NotificationSuppressor() {
+      suppressNotifications_.store(false, std::memory_order_release);
+    }
+  };
+
   RimeApi* rime;
   std::shared_ptr<SessionHolder> session_;
 
@@ -227,6 +286,8 @@ class Rime {
     return session_->id();
   }
 };
+
+std::atomic<bool> Rime::suppressNotifications_{false};
 
 GlobalRefSingleton* GlobalRef;
 
@@ -248,6 +309,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_osfans_trime_core_Rime_startupRime(
   auto notificationHandler = [](void* context_object, RimeSessionId session_id,
                                 const char* message_type,
                                 const char* message_value) {
+    if (Rime::notificationsSuppressed()) return;
     auto env = GlobalRef->AttachEnv();
     int type = 0;  // unknown
     if (strcmp(message_type, "schema") == 0) {
@@ -418,6 +480,13 @@ Java_com_osfans_trime_core_Rime_getRimeCandidates(JNIEnv* env, jclass clazz,
                                                   jint limit) {
   return rimeCandidateListToJObjectArray(
       env, Rime::Instance().getCandidates(start_index, limit));
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_osfans_trime_core_Rime_peekRimeCandidates(JNIEnv* env, jclass clazz,
+                                                   jstring input, jint limit) {
+  return rimeCandidateListToJObjectArray(
+      env, Rime::Instance().peekCandidates(CString(env, input), limit));
 }
 
 extern "C" JNIEXPORT jobject JNICALL

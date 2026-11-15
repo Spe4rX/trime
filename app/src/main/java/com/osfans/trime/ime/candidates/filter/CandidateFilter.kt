@@ -18,10 +18,13 @@ data class FilterSnapshot(
     val remaining: String,
     val nextSyllables: List<String>,
 ) {
-    /** Locks (for stepping back) followed by the next possible syllables. */
-    val filterItems: List<String> get() = locks + nextSyllables
+    /**
+     * Next-level syllables and prefixes only. Confirmed locks are shown in
+     * the reading bar, not repeated in this list.
+     */
+    val filterItems: List<String> get() = nextSyllables
 
-    val selectedIndex: Int get() = if (locks.isEmpty()) -1 else locks.lastIndex
+    val selectedIndex: Int get() = -1
 
     val hasCombinations: Boolean get() = filterItems.isNotEmpty()
 }
@@ -80,6 +83,44 @@ object CandidateFilter {
         if (snapshot.mode == InputMode.NONE && !singleChar) return candidates
         return candidates.filter { matches(it.candidate.text, table, snapshot, singleChar) }
     }
+
+    fun leftoverRawInput(
+        text: String,
+        table: HanziPinyinTable,
+        snapshot: FilterSnapshot,
+    ): String? = CandidateMatcher.leftoverRawInput(
+        text = text,
+        table = table,
+        rawInput = snapshot.rawInput,
+        locks = snapshot.locks,
+        remaining = snapshot.remaining,
+        mode = snapshot.mode,
+    )
+
+    /**
+     * Confirmed (locked) syllables and the still-unconfirmed reading. The
+     * unconfirmed part is joined with apostrophes, as in the stepwise bar.
+     */
+    data class BarParts(val confirmed: String?, val remaining: String?)
+
+    fun barParts(snapshot: FilterSnapshot, displayReading: String?): BarParts {
+        if (snapshot.locks.isEmpty()) return BarParts(null, null)
+        val confirmed = snapshot.locks
+            .joinToString(" ") { CandidateMatcher.formatDisplay(InputEncoding.normalizeSyllable(it)) }
+            .ifEmpty { null }
+        if (displayReading.isNullOrEmpty()) return BarParts(confirmed, null)
+        val syllables = displayReading.split(' ').filter { it.isNotEmpty() }
+        val skip = snapshot.locks.size.coerceAtMost(syllables.size)
+        val rest = syllables.drop(skip)
+        val remaining = if (rest.isEmpty()) null else rest.joinToString("'")
+        return BarParts(confirmed, remaining)
+    }
+
+    fun prefixInputs(snapshot: FilterSnapshot): List<String> =
+        SyllableEnumerator.rawPrefixes(snapshot.rawInput, snapshot.mode, snapshot.locks)
+
+    fun popLastLock(locks: List<String>): List<String> =
+        if (locks.isEmpty()) emptyList() else locks.subList(0, locks.lastIndex)
 
     fun filterProtos(
         candidates: Array<CandidateProto>,

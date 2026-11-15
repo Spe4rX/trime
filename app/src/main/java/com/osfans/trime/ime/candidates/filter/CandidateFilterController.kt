@@ -45,9 +45,26 @@ class CandidateFilterController(override val di: DI) :
         val showExpandedFilter: Boolean
             get() = composing && snapshot.hasCombinations
 
-        /** Confirmed text in the composition, or the current reading label. */
+        val barParts: CandidateFilter.BarParts
+            get() = CandidateFilter.barParts(snapshot, displayReading)
+
+        /**
+         * Confirmed pinyin (locks) plus the unconfirmed reading. Hanzi already
+         * chosen in the composition still wins when present, so the bar stays
+         * in sync with a mid-commit prefix like 你.
+         */
         val barLabel: String?
-            get() = confirmedPrefix?.takeIf { it.isNotEmpty() } ?: displayReading
+            get() {
+                confirmedPrefix?.takeIf { it.isNotEmpty() }?.let { return it }
+                val parts = barParts
+                return when {
+                    parts.confirmed != null && parts.remaining != null ->
+                        "${parts.confirmed} ${parts.remaining}"
+                    parts.confirmed != null -> parts.confirmed
+                    parts.remaining != null -> parts.remaining
+                    else -> displayReading
+                }
+            }
     }
 
     private val _state = MutableStateFlow(State())
@@ -98,8 +115,14 @@ class CandidateFilterController(override val di: DI) :
     }
 
     fun onFilterClick(itemIndex: Int, syllable: String) {
+        requestedLocks = current.snapshot.locks + syllable
+        refreshFromRime()
+    }
+
+    fun popLastLock() {
         val locks = current.snapshot.locks
-        requestedLocks = CandidateFilter.toggleLock(locks, itemIndex, syllable)
+        if (locks.isEmpty()) return
+        requestedLocks = CandidateFilter.popLastLock(locks)
         refreshFromRime()
     }
 

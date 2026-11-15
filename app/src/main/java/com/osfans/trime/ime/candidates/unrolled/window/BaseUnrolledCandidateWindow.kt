@@ -24,6 +24,7 @@ import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.CandidateViewHolder
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
+import com.osfans.trime.ime.candidates.filter.CandidateFilter
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.candidates.filter.SegmentCommit
 import com.osfans.trime.ime.candidates.filter.FilteringCandidatesPagingSource
@@ -111,18 +112,24 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
                 // compact.total is already the filtered count when a filter is
                 // active, so walk the raw Rime menu instead.
                 val rawTotal = lastRimeTotal
+                val state = filterController.current
                 FilteringCandidatesPagingSource(
                     rime,
                     rimeTotal = rawTotal,
                     predicate = { candidate, _ ->
-                        val state = filterController.current
-                        if (!state.singleChar &&
-                            state.snapshot.mode == InputMode.NONE
+                        val current = filterController.current
+                        if (!current.singleChar &&
+                            current.snapshot.mode == InputMode.NONE
                         ) {
                             true
                         } else {
                             filterController.matches(candidate.text)
                         }
+                    },
+                    prefixInputs = if (state.snapshot.mode != InputMode.NONE) {
+                        CandidateFilter.prefixInputs(state.snapshot)
+                    } else {
+                        emptyList()
                     },
                 )
             },
@@ -205,11 +212,28 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
         holder.itemView.run {
             setOnClickListener { _ ->
                 rime.launchOnReady { api ->
-                    api.selectCandidate(holder.idx, global = true)
-                    SegmentCommit.commitIfNeeded(api, service, filterController)
+                    if (holder.idx >= 0) {
+                        api.selectCandidate(holder.idx, global = true)
+                        SegmentCommit.commitIfNeeded(api, service, filterController)
+                    } else {
+                        val snapshot = filterController.current.snapshot
+                        val leftover = CandidateFilter.leftoverRawInput(
+                            holder.text,
+                            filterController.table,
+                            snapshot,
+                        ) ?: ""
+                        SegmentCommit.commitSynthetic(
+                            api,
+                            service,
+                            filterController,
+                            holder.text,
+                            leftover,
+                        )
+                    }
                 }
             }
             setOnLongClickListener { view ->
+                if (holder.idx < 0) return@setOnLongClickListener true
                 inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true)
                 true
             }

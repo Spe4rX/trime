@@ -115,6 +115,45 @@ object CandidateMatcher {
         return buf.toString()
     }
 
+    /**
+     * Leftover raw input after [text] is committed, so shorter stepwise
+     * selections can re-feed the unconsumed tail (你 from nihao → hao).
+     */
+    fun leftoverRawInput(
+        text: String,
+        table: HanziPinyinTable,
+        rawInput: String,
+        locks: List<String>,
+        remaining: String,
+        mode: InputMode,
+    ): String? {
+        if (mode == InputMode.NONE || rawInput.isEmpty()) return ""
+        val codePoints = text.codePoints().toArray()
+        if (codePoints.none { isHan(it) }) return rawInput
+        val path = matchPath(
+            codePoints,
+            0,
+            0,
+            InputEncoding.skipDelimiters(remaining),
+            table,
+            locks,
+            mode,
+        ) ?: return null
+        var rest = rawInput
+        for (syllable in path) {
+            val encoded = InputEncoding.encode(syllable, mode)
+            if (encoded.isEmpty()) continue
+            val consumed = InputEncoding.consume(rest, encoded)
+            if (consumed != null) {
+                rest = consumed
+                continue
+            }
+            val rem = InputEncoding.skipDelimiters(rest)
+            return if (encoded.startsWith(rem)) "" else rem
+        }
+        return InputEncoding.skipDelimiters(rest)
+    }
+
     fun formatDisplay(syllable: String): String = syllable
         .replace("nve", "nüe")
         .replace("lve", "lüe")
