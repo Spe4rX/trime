@@ -6,9 +6,6 @@ package com.osfans.trime.ime.bar.ui
 
 import android.content.Context
 import android.graphics.Typeface
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.ForegroundColorSpan
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -18,6 +15,7 @@ import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import com.osfans.trime.R
 import com.osfans.trime.ime.candidates.filter.CandidateFilter
+import com.osfans.trime.ime.candidates.filter.coloredReading
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import splitties.dimensions.dp
@@ -149,33 +147,14 @@ class CandidateUi(
             setReading(prefix)
             return
         }
-        if (parts.confirmed == null && parts.remaining == null) {
-            setReading(fallback)
-            return
-        }
-        val sb = SpannableStringBuilder()
-        if (parts.confirmed != null) {
-            val start = sb.length
-            sb.append(parts.confirmed)
-            sb.setSpan(
-                ForegroundColorSpan(confirmedColor),
-                start,
-                sb.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-        if (parts.remaining != null) {
-            if (sb.isNotEmpty()) sb.append(' ')
-            val start = sb.length
-            sb.append(parts.remaining)
-            sb.setSpan(
-                ForegroundColorSpan(normalColor),
-                start,
-                sb.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-            )
-        }
-        setReading(sb)
+        setReading(
+            coloredReading(
+                parts = parts,
+                fallback = fallback,
+                confirmedColor = confirmedColor,
+                normalColor = normalColor,
+            ),
+        )
     }
 
     fun setSingleChar(enabled: Boolean) {

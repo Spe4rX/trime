@@ -16,6 +16,8 @@ import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.coloredReading
+import com.osfans.trime.ime.candidates.filter.readingColors
 import com.osfans.trime.ime.core.TouchEventReceiverWindow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,6 +75,7 @@ class PreeditDelegate(override val di: DI) :
     fun refreshColors() {
         ui.refreshColors()
         setupPreeditBackground(ui.preedit)
+        applyDisplay()
     }
 
     private val touchEventReceiverWindow = TouchEventReceiverWindow(ui.root)
@@ -108,7 +111,19 @@ class PreeditDelegate(override val di: DI) :
         val reading = state.barLabel?.takeIf { it.isNotEmpty() }
             ?: state.displayReading?.takeIf { it.isNotEmpty() }
         if (!reading.isNullOrEmpty() && lastComposition.length > 0) {
-            ui.updateLabel(reading)
+            val colors = readingColors(
+                textColor = scope.colors.textColor,
+                hilitedTextColor = scope.colors.hilitedTextColor,
+                candidateTextColor = scope.colors.candidateTextColor,
+                accentHint = scope.colors.hilitedCandidateBackColor,
+            )
+            val label = coloredReading(
+                parts = state.barParts,
+                fallback = reading,
+                confirmedColor = colors.confirmed,
+                normalColor = colors.remaining,
+            )
+            ui.updateLabel(label, defaultColor = colors.remaining)
             ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
             touchEventReceiverWindow.dismiss()
             return

@@ -80,14 +80,18 @@ open class PreeditUi(
      * Show a derived reading such as "ni hao" as a non-interactive label
      * so cursor movement on the original composition is not disturbed.
      */
-    fun updateLabel(text: String) {
+    fun updateLabel(text: CharSequence, defaultColor: Int? = null) {
         preedit.onMoveCursor = null
+        if (defaultColor != null) {
+            preedit.setTextColor(defaultColor)
+        }
         visible = text.isNotEmpty()
         updateTextView(text, visible)
     }
 
     fun update(composition: CompositionProto) {
         preedit.onMoveCursor = this@PreeditUi.onMoveCursor
+        preedit.setTextColor(textColor)
         val string = composition.toSpannedString()
         val cursorPos = composition.cursorPos
         val hasPreedit = composition.length > 0
