@@ -6,6 +6,7 @@
 package com.osfans.trime.ime.bar.ui
 
 import android.content.Context
+import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.core.view.children
 import com.google.android.flexbox.AlignItems
@@ -15,6 +16,7 @@ import com.google.android.flexbox.JustifyContent
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeScope
 import com.osfans.trime.data.theme.model.ToolBar
+import com.osfans.trime.ime.bar.ToolBarVisibility
 import splitties.dimensions.dp
 import splitties.views.dsl.core.Ui
 import splitties.views.dsl.core.view
@@ -62,6 +64,11 @@ class ButtonsBarUi(
 
         buttons.drop(1).forEach { config ->
             val button = toolButton(config)
+            // Restricted buttons start hidden until the first keyboard id arrives,
+            // so they cannot flash on letter/number/symbol keyboards at startup.
+            if (config.visibleOnKeyboards.isNotEmpty()) {
+                button.visibility = View.GONE
+            }
             val size = getButtonSize(config)
             val lParams = FlexboxLayout.LayoutParams(size.first, size.second).apply {
                 marginEnd = ctx.dp(theme.toolBar.buttonSpacing)
@@ -78,6 +85,23 @@ class ButtonsBarUi(
         val finalHeight = if (height >= 0) ctx.dp(height) else height
 
         return finalWidth to finalHeight
+    }
+
+    /**
+     * Show or hide flexbox buttons according to [keyboardId]. The rightmost
+     * Hide button is [firstButton] and lives outside this Flexbox; it is not
+     * filtered here and stays visible.
+     */
+    fun updateVisibility(keyboardId: String) {
+        val configs = theme.toolBar.buttons.drop(1)
+        root.children.forEachIndexed { index, view ->
+            val config = configs.getOrNull(index) ?: return@forEachIndexed
+            view.visibility = if (ToolBarVisibility.isVisible(config, keyboardId)) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+        }
     }
 
     fun updateStyle(option: String, enabled: Boolean) {

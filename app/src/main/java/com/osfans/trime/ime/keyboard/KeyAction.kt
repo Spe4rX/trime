@@ -46,6 +46,8 @@ class KeyAction(
         private set
     var isSlideDelete = false
         private set
+    var toggleSchema: List<String> = emptyList()
+        private set
 
     val isModifierKey: Boolean
         // Trime把function键消费掉了，因此键盘只处理function键以外的修饰键
@@ -193,6 +195,7 @@ class KeyAction(
                     isSlideCursor = preset.slideCursor
                     isSlideDelete = preset.slideDelete
                     states = preset.states
+                    toggleSchema = preset.toggleSchema
 
                     label = preset.label
 
@@ -200,8 +203,11 @@ class KeyAction(
                     if (keycode != 0 || modifiers != 0) {
                         code = keycode
                         modifier = modifiers
-                    } else if (preset.command.isNotEmpty()) {
+                    } else if (preset.command.isNotEmpty() || preset.toggleSchema.isNotEmpty()) {
                         code = KeyEvent.KEYCODE_FUNCTION
+                        if (command.isEmpty() && preset.toggleSchema.isNotEmpty()) {
+                            command = TOGGLE_SCHEMA_COMMAND
+                        }
                     } else if (preset.send.isNotEmpty()) {
                         // A send value that resolved to nothing leaves the key
                         // inert; report it once per token (actions are cached).
@@ -239,6 +245,8 @@ class KeyAction(
     }
 
     companion object {
+        const val TOGGLE_SCHEMA_COMMAND = "toggle_schema"
+
         private val BRACED_PATTERN = Regex("""\{[^{}]+\}""")
 
         fun getModifierKeyOnMask(keycode: Int): Int = when (keycode) {

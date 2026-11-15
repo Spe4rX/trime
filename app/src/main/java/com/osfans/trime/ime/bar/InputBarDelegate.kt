@@ -388,4 +388,8 @@ class InputBarDelegate(override val di: DI) :
     override fun onRimeOptionUpdated(value: RimeMessage.OptionMessage.Data) {
         alwaysUi.updateButtonsStyle(value.option, value.value)
     }
+
+    override fun onKeyboardChanged(keyboardId: String) {
+        alwaysUi.buttonsUi.updateVisibility(keyboardId)
+    }
 }

@@ -149,6 +149,20 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                 }
             }
 
+            private fun handleToggleSchema(action: KeyAction) {
+                val schemas = action.toggleSchema
+                if (schemas.isEmpty()) return
+                rime.launchOnReady { api ->
+                    service.lifecycleScope.launch {
+                        val current = api.statusCached.schemaId
+                        val next = SchemaToggle.next(current, schemas)
+                        if (next.isNotEmpty() && next != current) {
+                            api.selectSchema(next)
+                        }
+                    }
+                }
+            }
+
             private fun handleSwitchCharset(action: KeyAction) {
                 val option = action.toggle.ifEmpty { return }
 
@@ -194,6 +208,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                     "select_candidate" -> handleSelectCandidate(arg)
                     "switch_hide_key_symbol" -> switchHideKeySymbol()
                     "switch_hide_key_hint" -> switchHideKeyHint()
+                    KeyAction.TOGGLE_SCHEMA_COMMAND -> handleToggleSchema(action)
                     else -> handleIntentAction(action.command, arg)
                 }
             }

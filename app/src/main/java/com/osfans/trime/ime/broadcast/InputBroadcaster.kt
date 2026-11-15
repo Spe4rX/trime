@@ -81,4 +81,8 @@ class InputBroadcaster : InputBroadcastReceiver {
     override fun onEnterKeyLabelUpdate(label: String) {
         receivers.forEach { it.onEnterKeyLabelUpdate(label) }
     }
+
+    override fun onKeyboardChanged(keyboardId: String) {
+        receivers.forEach { it.onKeyboardChanged(keyboardId) }
+    }
 }

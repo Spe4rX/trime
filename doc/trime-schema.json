@@ -83,6 +83,12 @@
         "action": {
           "type": "string",
           "default": ""
+        },
+        "visible_on_keyboards": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Preset keyboard ids on which this button is shown. Empty or omitted means always visible."
         }
       }
     }
@@ -952,7 +958,13 @@
           "type": "object",
           "properties": {
             "label": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
-            "send": { "oneOf": [{ "type": "string" }, { "type": "integer" }] }
+            "send": { "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+            "toggle_schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": [],
+              "description": "Schema ids to cycle on click. If the current schema is not in the list, the first id is selected."
+            }
           }
         }
       }
@@ -991,7 +1003,27 @@
                   "swipe_up": { "type": "string" },
                   "swipe_down": { "type": "string" },
                   "composing": { "type": "string" },
-                  "send_bindings": { "type": "boolean" }
+                  "send_bindings": { "type": "boolean" },
+                  "scroll": {
+                    "enum": ["none", "vertical", "horizontal"],
+                    "default": "none",
+                    "description": "When not none, this key is a scroll slot and hosts the child keys list."
+                  },
+                  "row_span": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "How many keyboard rows a vertical scroll slot occupies."
+                  },
+                  "visible_count": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "How many child keys fit in the viewport. 0 means the same as row_span."
+                  },
+                  "keys": {
+                    "type": "array",
+                    "description": "Child keys laid out inside the scroll slot.",
+                    "items": { "type": "object" }
+                  }
                 }
               }
             }

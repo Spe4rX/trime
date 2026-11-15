@@ -129,6 +129,15 @@ class Keyboard(
             val oneWeightWidthPx =
                 allowedWidth.toFloat() / (MAX_TOTAL_WEIGHT * (1 + splitRatio))
 
+            fun widthWeightOf(key: TextKeyboard.TextKey): Float =
+                if (key.width == 0f && (key.click.orAbsent != null || key.isScrollSlot)) {
+                    keyboardKeyWidth
+                } else {
+                    key.width
+                }
+
+            val occupiedSlots = mutableListOf<ScrollRegionLayout.OccupiedSlot>()
+
             // total width weight for each row.
             val rowWidthTotalWeight = mutableListOf<Float>()
 
@@ -139,23 +148,34 @@ class Keyboard(
             var column = 0
             var rowHeight = keyHeight
             var totalKeyWidth = 0f
+            var measureRow = 0
+            val firstPassPx: (Float) -> Int = { (it * allowedWidth / MAX_TOTAL_WEIGHT).toInt() }
+            var measureHoles = emptyList<Pair<Int, Int>>()
+
+            fun wrapMeasureRow() {
+                rowWidthTotalWeight.add(totalKeyWidth)
+                rowRawHeight.add(rowHeight)
+                measureRow++
+                measureHoles = ScrollRegionLayout.holesForRow(measureRow, occupiedSlots, firstPassPx)
+                x = 0
+                column = 0
+                totalKeyWidth = ScrollRegionLayout.reservedWeightForRow(measureRow, occupiedSlots)
+                rowHeight = keyHeight
+            }
 
             // determine row count, row heights, total row weights; does not create Key objects
             for (key in keys) {
 
                 // determine the width weight of this key
-                val keyWidthWeight =
-                    if (key.width == 0f && key.click.orAbsent != null) keyboardKeyWidth else key.width
+                val keyWidthWeight = widthWeightOf(key)
 
-                val widthPx = (keyWidthWeight * allowedWidth / MAX_TOTAL_WEIGHT).toInt()
+                val widthPx = firstPassPx(keyWidthWeight)
 
                 // wrap to next row if column or width limit is reached
-                if (column >= maxColumns || x + widthPx > allowedWidth) {
-                    rowWidthTotalWeight.add(totalKeyWidth)
-                    rowRawHeight.add(rowHeight)
-                    x = 0
-                    column = 0
-                    totalKeyWidth = 0f
+                var placedX = ScrollRegionLayout.advancePastHoles(x, widthPx, measureHoles)
+                if (column >= maxColumns || placedX + widthPx > allowedWidth) {
+                    wrapMeasureRow()
+                    placedX = ScrollRegionLayout.advancePastHoles(x, widthPx, measureHoles)
                 }
 
                 // first key of a row defines the row height
@@ -163,14 +183,25 @@ class Keyboard(
                     rowHeight = if (key.height > 0) key.height.toInt() else keyHeight
                 }
 
+                if (key.isScrollSlot && key.rowSpan > 1) {
+                    val xWeight = if (allowedWidth > 0) {
+                        placedX * MAX_TOTAL_WEIGHT.toFloat() / allowedWidth
+                    } else {
+                        0f
+                    }
+                    occupiedSlots.add(
+                        ScrollRegionLayout.OccupiedSlot(measureRow, key.rowSpan, xWeight, keyWidthWeight),
+                    )
+                }
+
                 totalKeyWidth += keyWidthWeight
 
-                // only clickable keys count toward column count
-                if (key.click.orAbsent != null) {
+                // clickable keys and scroll slots count toward column count
+                if (key.click.orAbsent != null || key.isScrollSlot) {
                     column++
                 }
 
-                x += widthPx
+                x = placedX + widthPx
             }
 
             rowWidthTotalWeight.add(totalKeyWidth)
@@ -209,25 +240,34 @@ class Keyboard(
             minWidth = 0
 
             val spacers = mutableListOf<Triple<Int, Int, Int>>()
+            val secondPassPx: (Float) -> Int = { (it * oneWeightWidthPx).toInt() }
+            var placeHoles = emptyList<Pair<Int, Int>>()
+
+            fun wrapPlaceRow() {
+                xPos = 0
+                yPos += currentRowHeight
+                row++
+                column = 0
+                splitInserted = false
+                currentRowHeight = rowHeightScaled[row]
+                placeHoles = ScrollRegionLayout.holesForRow(row, occupiedSlots, secondPassPx)
+                rowWeightAccumulo = ScrollRegionLayout.reservedWeightForRow(row, occupiedSlots)
+            }
 
             // create Key objects, assign position, size, offsets
             for (textKey in keys) {
 
-                val keyWidthWeight =
-                    if (textKey.width == 0f && textKey.click.orAbsent != null) keyboardKeyWidth else textKey.width
+                val keyWidthWeight = widthWeightOf(textKey)
 
-                var widthPx = (keyWidthWeight * oneWeightWidthPx).toInt()
+                var widthPx = secondPassPx(keyWidthWeight)
 
                 // wrap to next row if limits are exceeded
-                if (column >= maxColumns || xPos + widthPx > allowedWidth) {
-                    xPos = 0
-                    yPos += currentRowHeight
-                    row++
-                    column = 0
-                    rowWeightAccumulo = 0f
-                    splitInserted = false
-                    currentRowHeight = rowHeightScaled[row]
+                var placedX = ScrollRegionLayout.advancePastHoles(xPos, widthPx, placeHoles)
+                if (column >= maxColumns || placedX + widthPx > allowedWidth) {
+                    wrapPlaceRow()
+                    placedX = ScrollRegionLayout.advancePastHoles(xPos, widthPx, placeHoles)
                 }
+                xPos = placedX
 
                 rowWeightAccumulo += keyWidthWeight
 
@@ -247,7 +287,7 @@ class Keyboard(
                     }
                 }
 
-                if (textKey.click.orAbsent == null) {
+                if (!textKey.isScrollSlot && textKey.click.orAbsent == null) {
                     if (expandKeypressArea) spacers.add(Triple(xPos, widthPx, row))
                     xPos += widthPx
                     continue
@@ -271,7 +311,43 @@ class Keyboard(
                 val rightGap = abs(allowedWidth - xPos - widthPx)
                 key.width = if (rightGap <= allowedWidth / 100) allowedWidth - xPos else widthPx
 
-                key.height = currentRowHeight
+                if (textKey.isScrollSlot) {
+                    key.height = ScrollRegionLayout.viewportHeight(rowHeightScaled, row, textKey.rowSpan)
+                    val visibleCount = ScrollRegionLayout.effectiveVisibleCount(
+                        textKey.visibleCount,
+                        textKey.rowSpan,
+                    )
+                    val childWidths = textKey.keys.map { child ->
+                        if (textKey.scroll == TextKeyboard.TextKey.Scroll.HORIZONTAL) {
+                            ScrollRegionLayout.childWidthPx(child.width, keyboardKeyWidth, secondPassPx)
+                        } else {
+                            key.width
+                        }
+                    }
+                    val (rects, _) = ScrollRegionLayout.layoutChildren(
+                        textKey.scroll,
+                        key.width,
+                        key.height,
+                        visibleCount,
+                        childWidths,
+                    )
+                    key.scrollRegion = ScrollRegion(
+                        textKey.scroll,
+                        textKey.keys.mapIndexed { index, childDef ->
+                            val rect = rects[index]
+                            Key(this, theme, childDef).apply {
+                                x = rect.x
+                                y = rect.y
+                                width = rect.width
+                                height = rect.height
+                                this.row = index
+                                column = 0
+                            }
+                        },
+                    )
+                } else {
+                    key.height = currentRowHeight
+                }
                 key.row = row
                 key.column = column
 
