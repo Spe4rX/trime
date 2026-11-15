@@ -73,6 +73,9 @@ object ColorManager {
 
     fun init(configuration: Configuration) {
         isNightMode = configuration.isNightMode()
+        prefs.followSystemDayNight.registerOnChangeListener { _, _ ->
+            activateScheme(notify = true)
+        }
         activateScheme(notify = false)
 
         val maxMemory = Runtime.getRuntime().maxMemory() / 1024
