@@ -25,6 +25,7 @@ import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.ime.candidates.CandidateViewHolder
 import com.osfans.trime.ime.candidates.compact.CompactCandidateDelegate
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.SegmentCommit
 import com.osfans.trime.ime.candidates.filter.FilteringCandidatesPagingSource
 import com.osfans.trime.ime.candidates.filter.InputMode
 import com.osfans.trime.ime.candidates.unrolled.PagingCandidateViewAdapter
@@ -203,7 +204,10 @@ abstract class BaseUnrolledCandidateWindow(di: DI) :
     fun bindCandidateUiViewHolder(holder: CandidateViewHolder) {
         holder.itemView.run {
             setOnClickListener { _ ->
-                rime.launchOnReady { it.selectCandidate(holder.idx, global = true) }
+                rime.launchOnReady { api ->
+                    api.selectCandidate(holder.idx, global = true)
+                    SegmentCommit.commitIfNeeded(api, service, filterController)
+                }
             }
             setOnLongClickListener { view ->
                 inputView.showCandidateActionMenu(holder.idx, holder.text, view, global = true)

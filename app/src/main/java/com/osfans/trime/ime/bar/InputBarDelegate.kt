@@ -243,7 +243,7 @@ class InputBarDelegate(override val di: DI) :
         service.lifecycleScope.launch {
             filterController.state.collect { state ->
                 candidateUi.setSingleChar(state.singleChar)
-                candidateUi.setReading(state.displayReading)
+                candidateUi.setReading(state.barLabel)
             }
         }
     }

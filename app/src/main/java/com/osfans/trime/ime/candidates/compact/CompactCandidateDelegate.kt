@@ -25,6 +25,8 @@ import com.osfans.trime.ime.bar.UnrollButtonStateMachine
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
 import com.osfans.trime.core.CandidateProto
 import com.osfans.trime.ime.candidates.filter.CandidateFilterController
+import com.osfans.trime.ime.candidates.filter.SegmentCommit
+import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.candidates.filter.IndexedCandidate
 import com.osfans.trime.ime.candidates.filter.InputMode
 import com.osfans.trime.ime.candidates.unrolled.decoration.FlexboxVerticalDecoration
@@ -51,6 +53,7 @@ class CompactCandidateDelegate(override val di: DI) :
     private val inputView: InputView by instance()
     private val bar: InputBarDelegate by instance()
     private val filterController: CandidateFilterController by instance()
+    private val service: TrimeInputMethodService by instance()
 
     private val theme: Theme
         get() = scope.theme
@@ -111,7 +114,10 @@ class CompactCandidateDelegate(override val di: DI) :
         CompactCandidateViewAdapter(scope).apply {
             setOnItemClickListener { _, _, position ->
                 val index = items.getOrNull(position)?.index ?: return@setOnItemClickListener
-                rime.launchOnReady { it.selectCandidate(index, global = true) }
+                rime.launchOnReady { api ->
+                    api.selectCandidate(index, global = true)
+                    SegmentCommit.commitIfNeeded(api, service, filterController)
+                }
             }
             setOnItemLongClickListener { _, view, position ->
                 val item = items.getOrNull(position) ?: return@setOnItemLongClickListener false

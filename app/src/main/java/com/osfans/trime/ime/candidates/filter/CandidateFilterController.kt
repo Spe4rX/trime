@@ -37,12 +37,17 @@ class CandidateFilterController(override val di: DI) :
         val composing: Boolean = false,
         val hasCandidates: Boolean = false,
         val displayReading: String? = null,
+        val confirmedPrefix: String? = null,
     ) {
         val showCompactFilter: Boolean
             get() = composing && hasCandidates && snapshot.hasCombinations
 
         val showExpandedFilter: Boolean
             get() = composing && snapshot.hasCombinations
+
+        /** Confirmed text in the composition, or the current reading label. */
+        val barLabel: String?
+            get() = confirmedPrefix?.takeIf { it.isNotEmpty() } ?: displayReading
     }
 
     private val _state = MutableStateFlow(State())
@@ -57,6 +62,8 @@ class CandidateFilterController(override val di: DI) :
     private var composing: Boolean = false
     private var hasCandidates: Boolean = false
     private var highlightedText: String? = null
+    private var confirmedPrefix: String? = null
+    private var persistSingleChar = false
     private var refreshSeq = 0
 
     private fun loadTable(): HanziPinyinTable {
@@ -75,6 +82,7 @@ class CandidateFilterController(override val di: DI) :
             return
         }
         composing = true
+        confirmedPrefix = SegmentCommit.split(data)?.confirmed
         refreshFromRime()
     }
 
@@ -103,6 +111,22 @@ class CandidateFilterController(override val di: DI) :
 
     fun toggleSingleChar() {
         setSingleChar(!singleChar)
+    }
+
+    /**
+     * Keep 单字 mode across the brief empty composition between committing a
+     * character and re-feeding the leftover input.
+     */
+    fun beginSegmentCommit() {
+        persistSingleChar = true
+    }
+
+    fun endSegmentCommit(keepSingleChar: Boolean) {
+        persistSingleChar = false
+        if (!keepSingleChar && singleChar) {
+            singleChar = false
+            publish(current.snapshot, current.displayReading)
+        }
     }
 
     /**
@@ -154,15 +178,17 @@ class CandidateFilterController(override val di: DI) :
             composing = composing,
             hasCandidates = hasCandidates,
             displayReading = reading,
+            confirmedPrefix = confirmedPrefix,
         )
     }
 
     private fun reset() {
         requestedLocks = emptyList()
-        singleChar = false
+        if (!persistSingleChar) singleChar = false
         composing = false
         hasCandidates = false
         highlightedText = null
-        _state.value = State()
+        confirmedPrefix = null
+        _state.value = State(singleChar = singleChar)
     }
 }
