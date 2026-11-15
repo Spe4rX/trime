@@ -71,6 +71,9 @@ class Key(
     var extraWidthLeft = 0
     var extraWidthRight = 0
 
+    /** Non-null when this key is a scroll slot; child keys live only here, not in [Keyboard.keys]. */
+    var scrollRegion: ScrollRegion? = null
+
     private val label = keyDef?.label ?: ""
     private val labelSymbol = keyDef?.labelSymbol ?: ""
     val hint: String = keyDef?.hint ?: ""

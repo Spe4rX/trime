@@ -26,4 +26,11 @@ data class PresetKey(
     @Serializable(with = LenientStringListSerializer::class)
     val states: List<String> = emptyList(),
     val send: String = "",
+    /**
+     * Schema ids to cycle through when this key is pressed. The app picks the
+     * next id from the current schema (or the first id if the current one is
+     * not in the list). See [com.osfans.trime.ime.keyboard.SchemaToggle].
+     */
+    @Serializable(with = LenientStringListSerializer::class)
+    val toggleSchema: List<String> = emptyList(),
 )

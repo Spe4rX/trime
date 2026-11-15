@@ -8,6 +8,8 @@ package com.osfans.trime.ime.keyboard
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.children
 import com.osfans.trime.data.prefs.AppPrefs
@@ -49,20 +51,38 @@ class KeyboardView(
         removeAllViews()
 
         keys.forEachIndexed { index, key ->
-            val keyView = createKeyView(index, key)
-            addView(keyView)
+            addView(createSlotView(index, key))
         }
     }
 
-    private fun createKeyView(index: Int, key: Key): KeyView = KeyView(context, theme, key, keyboard, this, keyboardActionListener).apply {
-        id = index
-
+    private fun createSlotView(index: Int, key: Key): View {
         val totalWidth = key.width + key.extraWidthLeft + key.extraWidthRight
-        layoutParams = LayoutParams(totalWidth, key.height)
+        val params = LayoutParams(totalWidth, key.height)
+        val x = (key.x - key.extraWidthLeft).toFloat()
+        val y = key.y.toFloat()
+        return if (key.scrollRegion != null) {
+            ScrollRegionView(context, theme, key, keyboard, this, keyboardActionListener).apply {
+                id = index
+                layoutParams = params
+                translationX = x
+                translationY = y
+            }
+        } else {
+            createKeyView(index, key, params, x, y)
+        }
+    }
 
-        translationX = (key.x - key.extraWidthLeft).toFloat()
-        translationY = key.y.toFloat()
-
+    private fun createKeyView(
+        index: Int,
+        key: Key,
+        params: LayoutParams,
+        x: Float,
+        y: Float,
+    ): KeyView = KeyView(context, theme, key, keyboard, this, keyboardActionListener).apply {
+        id = index
+        layoutParams = params
+        translationX = x
+        translationY = y
         setPadding(
             keyboard.horizontalGap / 2 + key.extraWidthLeft,
             keyboard.verticalGap / 2,
@@ -89,11 +109,30 @@ class KeyboardView(
     }
 
     fun invalidateAllKeys() {
-        children.forEach { it.invalidate() }
+        invalidateKeyViews(this)
     }
 
     fun invalidateKeyByIndex(index: Int) {
-        getChildAt(index)?.invalidate()
+        findKeyViewByIndex(this, index)?.invalidate()
+    }
+
+    private fun invalidateKeyViews(view: View) {
+        if (view is KeyView) {
+            view.invalidate()
+        }
+        if (view is ViewGroup) {
+            view.children.forEach { invalidateKeyViews(it) }
+        }
+    }
+
+    private fun findKeyViewByIndex(view: View, index: Int): KeyView? {
+        if (view is KeyView && view.id == index) return view
+        if (view is ViewGroup) {
+            view.children.forEach { child ->
+                findKeyViewByIndex(child, index)?.let { return it }
+            }
+        }
+        return null
     }
 
     val isCapsOn: Boolean

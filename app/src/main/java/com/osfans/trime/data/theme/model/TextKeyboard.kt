@@ -89,7 +89,27 @@ data class TextKeyboard(
         val paging: KeyActionToken? = null,
         val combo: KeyActionToken? = null,
         val ascii: KeyActionToken? = null,
+        /**
+         * When not [Scroll.NONE], this key is a scroll slot: [keys] are shown
+         * inside a vertical or horizontal scroll view that occupies this key's
+         * rectangle. [rowSpan] is how many keyboard rows a vertical slot
+         * reserves; [visibleCount] is how many children fit in the viewport
+         * (0 means the same as [rowSpan]).
+         */
+        val scroll: Scroll = Scroll.NONE,
+        val rowSpan: Int = 1,
+        val visibleCount: Int = 0,
+        val keys: List<TextKey> = emptyList(),
     ) {
+        enum class Scroll {
+            NONE,
+            VERTICAL,
+            HORIZONTAL,
+        }
+
+        val isScrollSlot: Boolean
+            get() = scroll != Scroll.NONE
+
         companion object {
             val DEFAULTS = TextKey()
         }

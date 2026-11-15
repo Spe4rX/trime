@@ -20,6 +20,7 @@ import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.model.TextKeyboard
 import com.osfans.trime.ime.broadcast.EnterKeyDisplayDelegate
 import com.osfans.trime.ime.broadcast.InputBroadcastReceiver
+import com.osfans.trime.ime.broadcast.InputBroadcaster
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.keyboard.KeyboardPrefs.isLandscapeMode
 import com.osfans.trime.ime.popup.PopupDelegate
@@ -50,6 +51,7 @@ class KeyboardWindow(di: DI) :
     private val commonKeyboardActionListener: CommonKeyboardActionListener by instance()
     private val popup: PopupDelegate by instance()
     private val enterKeyDisplay: EnterKeyDisplayDelegate by instance()
+    private val broadcaster: InputBroadcaster by instance()
 
     private val cursorCapsMode: Int
         get() =
@@ -199,6 +201,7 @@ class KeyboardWindow(di: DI) :
                 add(it, lParams(matchParent, matchParent))
             }
         }
+        broadcaster.onKeyboardChanged(target)
     }
 
     private fun smartMatchKeyboard(): String {

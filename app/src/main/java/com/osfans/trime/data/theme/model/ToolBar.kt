@@ -24,6 +24,13 @@ data class ToolBar(
         val longPressAction: String = "",
         @Serializable(with = LenientIntListSerializer::class)
         val size: List<Int> = emptyList(),
+        /**
+         * Preset keyboard ids on which this button is shown. Empty or omitted
+         * means the button is always visible. Matching is by keyboard id, not
+         * schema id.
+         */
+        @Serializable(with = LenientStringListSerializer::class)
+        val visibleOnKeyboards: List<String> = emptyList(),
     ) {
 
         @Serializable

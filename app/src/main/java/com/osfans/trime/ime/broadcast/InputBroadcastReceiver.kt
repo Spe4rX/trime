@@ -35,4 +35,7 @@ interface InputBroadcastReceiver {
     fun onWindowDetached(window: BoardWindow) {}
 
     fun onEnterKeyLabelUpdate(label: String) {}
+
+    /** The attached preset keyboard changed; [keyboardId] is a preset_keyboards key. */
+    fun onKeyboardChanged(keyboardId: String) {}
 }
