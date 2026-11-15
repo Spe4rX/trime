@@ -22,6 +22,7 @@ import com.osfans.trime.data.theme.ColorManager
 import com.osfans.trime.data.theme.Theme
 import com.osfans.trime.data.theme.ThemeManager
 import com.osfans.trime.data.theme.model.LiquidKeyboard
+import com.osfans.trime.ime.candidates.filter.CandidateFilterController
 import com.osfans.trime.ime.clipboard.ClipboardWindow
 import com.osfans.trime.ime.core.TrimeInputMethodService
 import com.osfans.trime.ime.dialog.EnabledSchemaPickerDialog
@@ -55,6 +56,7 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
     private val windowManager: BoardWindowManager by instance()
     private val keyboardWindow: KeyboardWindow by instance()
     private val liquidWindow: LiquidWindow by instance()
+    private val filterController: CandidateFilterController by instance()
 
     private val prefs = AppPrefs.defaultInstance()
 
@@ -393,6 +395,12 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                 keyEventCode: Int,
                 metaState: Int,
             ) {
+                if (keyEventCode == KeyEvent.KEYCODE_DEL &&
+                    metaState == 0 &&
+                    filterController.handleBackspace()
+                ) {
+                    return
+                }
                 // An uppercase letter key (e.g. from `{x: A}`) is passed to
                 // rime as the uppercase keysym with Shift, matching what a
                 // physical keyboard reports via the unicode char, so that

@@ -153,6 +153,26 @@ class CandidateFilterTest :
             }
         }
 
+        Given("backspace while syllables are locked") {
+            Then("each backspace pops one lock and leaves the raw input intact") {
+                val raw = "gugugaga"
+                var locks = listOf("gu", "gu", "ga", "ga")
+                val expected = listOf(
+                    listOf("gu", "gu", "ga"),
+                    listOf("gu", "gu"),
+                    listOf("gu"),
+                    emptyList(),
+                )
+                for (want in expected) {
+                    locks = CandidateFilter.popLastLock(locks)
+                    locks shouldBe want
+                    val snapshot = CandidateFilter.compute(raw, locks)
+                    snapshot.rawInput shouldBe raw
+                    snapshot.locks shouldBe want
+                }
+            }
+        }
+
         Given("a partial syllable that has not been fully typed") {
             Then("the reading label stays at the typed prefix, not the first candidate's full pinyin") {
                 val letterH = CandidateFilter.compute("h", emptyList())

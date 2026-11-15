@@ -795,7 +795,26 @@ open class TrimeInputMethodService : LifecycleInputMethodService() {
         return true
     }
 
+    private var consumeDelUp = false
+
     private fun forwardKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_DEL && event.hasNoModifiers()) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (inputView?.handleBackspace() == true) {
+                        consumeDelUp = true
+                        return true
+                    }
+                    consumeDelUp = false
+                }
+                KeyEvent.ACTION_UP -> {
+                    if (consumeDelUp) {
+                        consumeDelUp = false
+                        return true
+                    }
+                }
+            }
+        }
         val keyVal = KeyValue.fromKeyEvent(event)
         if (keyVal.value != RimeKeyMapping.RimeKey_VoidSymbol) {
             val modifiers = KeyModifiers.fromKeyEvent(event)

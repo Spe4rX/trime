@@ -126,6 +126,16 @@ class CandidateFilterController(override val di: DI) :
         refreshFromRime()
     }
 
+    /**
+     * Consume a backspace to drop the last lock. Returns true when a lock
+     * was removed so the raw input should be left unchanged.
+     */
+    fun handleBackspace(): Boolean {
+        if (current.snapshot.locks.isEmpty()) return false
+        popLastLock()
+        return true
+    }
+
     fun setSingleChar(enabled: Boolean) {
         if (singleChar == enabled) return
         singleChar = enabled

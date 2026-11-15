@@ -130,6 +130,7 @@ class InputView(
     private val inputBar: InputBarDelegate by instance()
     private val keyboardWindow: KeyboardWindow by instance()
     private val liquidWindow: LiquidWindow by instance()
+    private val filterController: CandidateFilterController by instance()
 
     private val candidatesMode by AppPrefs.defaultInstance().candidates.mode
 
@@ -166,6 +167,9 @@ class InputView(
         }
 
     val keyboardView: View
+
+    /** Consume backspace to pop a lock when one is active. */
+    fun handleBackspace(): Boolean = filterController.handleBackspace()
 
     /** Restyles colors after a scheme switch without rebuilding the view tree. */
     fun refreshColors() {
