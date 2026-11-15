@@ -154,11 +154,16 @@ class CommonKeyboardActionListener(override val di: DI) : DIAware {
                 if (schemas.isEmpty()) return
                 rime.launchOnReady { api ->
                     service.lifecycleScope.launch {
-                        val current = api.statusCached.schemaId
+                        val current = api.selectedSchemaId().ifEmpty { api.statusCached.schemaId }
                         val next = SchemaToggle.next(current, schemas)
-                        if (next.isNotEmpty() && next != current) {
-                            api.selectSchema(next)
+                        if (next.isEmpty() || next == current) return@launch
+                        if (!api.selectSchema(next)) return@launch
+                        val keyboardId = SchemaToggle.keyboardForSchema(next, theme.presetKeyboards.keys)
+                        val config = theme.presetKeyboards[keyboardId]
+                        if (config != null && config.resetAsciiMode) {
+                            api.setRuntimeOption("ascii_mode", config.asciiMode == 1)
                         }
+                        keyboardWindow.switchKeyboard(keyboardId)
                     }
                 }
             }

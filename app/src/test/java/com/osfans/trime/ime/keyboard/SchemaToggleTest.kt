@@ -49,6 +49,20 @@ class SchemaToggleTest :
             }
         }
 
+        Given("a theme that has a keyboard named after the schema") {
+            val ids = listOf("luna_pinyin_t9", "default", "letter")
+
+            Then("the schema id is used as the keyboard id") {
+                SchemaToggle.keyboardForSchema("luna_pinyin_t9", ids) shouldBe "luna_pinyin_t9"
+                SchemaToggle.keyboardForSchema("default", ids) shouldBe "default"
+            }
+
+            Then("an unknown or blank schema falls back to .default") {
+                SchemaToggle.keyboardForSchema("luna_pinyin_simp", ids) shouldBe ".default"
+                SchemaToggle.keyboardForSchema("", ids) shouldBe ".default"
+            }
+        }
+
         Given("an empty schema list") {
             Then("the result is empty") {
                 SchemaToggle.next("luna_pinyin_t9", emptyList()) shouldBe ""
