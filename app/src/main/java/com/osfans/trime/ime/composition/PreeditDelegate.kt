@@ -103,14 +103,10 @@ class PreeditDelegate(override val di: DI) :
             return
         }
         val state = filterController.current
-        // When syllables are locked, keep the confirmed pinyin (barLabel)
-        // instead of falling back to Rime's raw T9 digits, or shrinking to
-        // a highlighted short word's reading.
-        val reading = if (state.snapshot.locks.isNotEmpty()) {
-            state.barLabel?.takeIf { it.isNotEmpty() }
-        } else {
-            state.displayReading?.takeIf { it.isNotEmpty() }
-        }
+        // barLabel is built from the typed raw input (and locks), so its
+        // pinyin letter count stays in sync when locking or deleting.
+        val reading = state.barLabel?.takeIf { it.isNotEmpty() }
+            ?: state.displayReading?.takeIf { it.isNotEmpty() }
         if (!reading.isNullOrEmpty() && lastComposition.length > 0) {
             ui.updateLabel(reading)
             ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE

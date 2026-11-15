@@ -55,6 +55,36 @@ object SyllableEnumerator {
         return out.distinct()
     }
 
+    /**
+     * Split [remaining] into syllables that cover every typed key, never
+     * inventing extra letters. Full syllables are taken longest-first; a
+     * trailing abbreviation or incomplete prefix is used only if needed.
+     */
+    fun segment(remaining: String, mode: InputMode): List<String> {
+        var rem = InputEncoding.skipDelimiters(remaining)
+        if (rem.isEmpty() || mode == InputMode.NONE) return emptyList()
+        val out = ArrayList<String>()
+        while (rem.isNotEmpty()) {
+            val options = enumerate(rem, mode)
+            val pick = options.firstOrNull { !PinyinSyllables.isAbbreviation(it) }
+                ?: options.firstOrNull()
+                ?: break
+            val encoded = InputEncoding.encode(pick, mode)
+            if (encoded.isEmpty() || !rem.startsWith(encoded)) break
+            out += pick
+            rem = InputEncoding.skipDelimiters(rem.substring(encoded.length))
+        }
+        if (rem.isNotEmpty() && mode == InputMode.LETTER) {
+            out += InputEncoding.normalizeSyllable(rem)
+        } else if (rem.isNotEmpty() && mode == InputMode.T9) {
+            for (ch in rem) {
+                val one = enumerate(ch.toString(), mode).firstOrNull() ?: break
+                out += one
+            }
+        }
+        return out
+    }
+
     private fun prefixBeforeRemaining(rawInput: String, remaining: String): String {
         if (remaining.isEmpty()) return rawInput
         val idx = rawInput.lastIndexOf(remaining)

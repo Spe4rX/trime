@@ -104,16 +104,70 @@ object CandidateFilter {
     data class BarParts(val confirmed: String?, val remaining: String?)
 
     fun barParts(snapshot: FilterSnapshot, displayReading: String?): BarParts {
-        if (snapshot.locks.isEmpty()) return BarParts(null, null)
+        if (snapshot.mode == InputMode.NONE && snapshot.locks.isEmpty()) {
+            return BarParts(null, null)
+        }
+        val remParts = remainingSyllables(snapshot, displayReading)
+            .map { CandidateMatcher.formatDisplay(it) }
+        val remaining = remParts
+            .joinToString(if (snapshot.locks.isEmpty()) " " else "'")
+            .ifEmpty { null }
+        if (snapshot.locks.isEmpty()) return BarParts(null, remaining)
         val confirmed = snapshot.locks
             .joinToString(" ") { CandidateMatcher.formatDisplay(InputEncoding.normalizeSyllable(it)) }
             .ifEmpty { null }
-        if (displayReading.isNullOrEmpty()) return BarParts(confirmed, null)
-        val syllables = displayReading.split(' ').filter { it.isNotEmpty() }
-        val skip = snapshot.locks.size.coerceAtMost(syllables.size)
-        val rest = syllables.drop(skip)
-        val remaining = if (rest.isEmpty()) null else rest.joinToString("'")
         return BarParts(confirmed, remaining)
+    }
+
+    /**
+     * Unconfirmed syllables that together cover every remaining typed key.
+     * A highlighted candidate's reading is used only when it already
+     * accounts for the whole remainder; otherwise the remainder is
+     * segmented from the raw input so short words cannot drop letters.
+     */
+    fun remainingSyllables(snapshot: FilterSnapshot, displayReading: String?): List<String> {
+        if (snapshot.mode == InputMode.NONE) return emptyList()
+        val rem = InputEncoding.skipDelimiters(snapshot.remaining)
+        if (rem.isEmpty()) return emptyList()
+        val preferred = displayReading
+            ?.split(' ')
+            ?.filter { it.isNotEmpty() }
+            ?.drop(snapshot.locks.size)
+            ?.map { InputEncoding.normalizeSyllable(it) }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+        return coverRemaining(rem, snapshot.mode, preferred)
+    }
+
+    private fun coverRemaining(
+        remaining: String,
+        mode: InputMode,
+        preferred: List<String>,
+    ): List<String> {
+        if (preferred.isNotEmpty() && pathCoversRemaining(preferred, remaining, mode)) {
+            return CandidateMatcher.clipPathToTyped(preferred, emptyList(), remaining, mode)
+        }
+        return SyllableEnumerator.segment(remaining, mode)
+    }
+
+    private fun pathCoversRemaining(
+        path: List<String>,
+        remaining: String,
+        mode: InputMode,
+    ): Boolean {
+        var rem = InputEncoding.skipDelimiters(remaining)
+        for (reading in path) {
+            if (rem.isEmpty()) return true
+            val encoded = InputEncoding.encode(reading, mode)
+            if (encoded.isEmpty()) return false
+            when {
+                rem.startsWith(encoded) ->
+                    rem = InputEncoding.skipDelimiters(rem.substring(encoded.length))
+                encoded.startsWith(rem) -> return true
+                else -> return false
+            }
+        }
+        return rem.isEmpty()
     }
 
     fun prefixInputs(snapshot: FilterSnapshot): List<String> =

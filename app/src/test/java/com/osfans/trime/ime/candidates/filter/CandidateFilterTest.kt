@@ -196,6 +196,41 @@ class CandidateFilterTest :
                 four.remaining shouldBe "gu'ga'ga"
             }
 
+            Then("the displayed pinyin has as many letters as the raw input") {
+                fun rawLen(input: String) = input.filter { it != '\'' }.length
+                fun pinyinLen(text: String?) = text?.count { it.isLetter() } ?: 0
+                fun barLen(parts: CandidateFilter.BarParts) =
+                    pinyinLen(parts.confirmed) + pinyinLen(parts.remaining)
+                fun check(raw: String, locks: List<String>, reading: String?) {
+                    val parts = CandidateFilter.barParts(CandidateFilter.compute(raw, locks), reading)
+                    barLen(parts) shouldBe rawLen(raw)
+                }
+                check("gugugaga", emptyList(), "hu hu ga ga")
+                check("gugugaga", listOf("gu"), "gu gu ga ga")
+                check("gugugaga", listOf("gu"), "gu hui")
+                check("gugugaga", listOf("gu", "gu", "ga", "ga"), null)
+                check("gugugag", emptyList(), "gu gu ga")
+                check("nihao", emptyList(), "ni")
+                check("niha", emptyList(), "ni")
+                check("h", emptyList(), "hao")
+                check("48484242", emptyList(), "hu hu ga ga")
+                check("48484242", listOf("gu"), "gu hui")
+                check("48484242", listOf("gu", "gu", "ga", "ga"), null)
+                check("4848424", emptyList(), "hu hu ga")
+                val shortLock = CandidateFilter.barParts(
+                    CandidateFilter.compute("gugugaga", listOf("gu")),
+                    "gu hui",
+                )
+                shortLock.confirmed shouldBe "gu"
+                shortLock.remaining shouldBe "gu'ga'ga"
+                val deleted = CandidateFilter.barParts(
+                    CandidateFilter.compute("niha", emptyList()),
+                    "ni",
+                )
+                deleted.confirmed shouldBe null
+                deleted.remaining shouldBe "ni ha"
+            }
+
             Then("raw prefixes stop at syllable boundaries and omit the full input") {
                 val full = SyllableEnumerator.rawPrefixes("64426", InputMode.T9)
                 full.shouldContainAll("6", "64", "644", "6442")
